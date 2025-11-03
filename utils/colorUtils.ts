@@ -57,6 +57,7 @@ export const EMOTION_COLORS: Record<Emotion, string> = {
   guilt: '#696969', // Dim Gray
   emptiness: '#1C1C1C', // Almost Black
   alienation: '#36454F', // Charcoal
+  desperation: '#5A5A82', // Dark Slate Blue/Purple
 
   // Fear/Anxiety
   fear: '#4B0082', // Indigo

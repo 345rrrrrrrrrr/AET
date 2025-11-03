@@ -53,26 +53,37 @@ export const Terminal: React.FC<TerminalProps> = ({ logs, onCommand, history, on
   const isPasswordInput = mode === 'awaiting_password' || mode === 'awaiting_password_confirm';
   const terminalPrompt = currentUser ? `${currentUser.username}$` : '>';
 
+  const resetAuthFlow = useCallback(() => {
+    setMode('awaiting_action');
+    setAction(null);
+    setUsername('');
+    setPassword('');
+    setInput('');
+  }, []);
+
   useEffect(() => {
-    if (!currentUser) {
-        setMode('awaiting_action');
-        setAction(null);
-        setUsername('');
-        setPassword('');
+    if (currentUser) {
+        // If we just logged in, reset the auth flow state.
+        // This will ensure the input field is no longer a password field.
+        if (mode !== 'awaiting_action') {
+            resetAuthFlow();
+        }
+    } else {
+        // User is not logged in or just logged out.
+        // Set up for authentication.
+        resetAuthFlow();
+        // Only show initial prompt if the terminal is fresh
+        if (logs.length <= 2) { 
+            addLog("AET Authentication required.", 'system');
+            addLog("Type 'login' or 'register' to begin.", 'info');
+        }
     }
-  }, [currentUser]);
+  }, [currentUser, resetAuthFlow, addLog, logs.length, mode]);
 
   useEffect(() => {
     setHistoryIndex(history.length);
   }, [history]);
   
-  useEffect(() => {
-    if (!currentUser && logs.length < 3) {
-      addLog("AET Authentication required.", 'system');
-      addLog("Type 'login' or 'register' to begin.", 'info');
-    }
-  }, [currentUser, addLog, logs.length]);
-
   useEffect(() => {
     endOfLogsRef.current?.scrollIntoView({ behavior: 'smooth' });
     inputRef.current?.focus();
@@ -126,14 +137,6 @@ export const Terminal: React.FC<TerminalProps> = ({ logs, onCommand, history, on
           window.removeEventListener('mouseup', handleMouseUp);
       };
   }, [handleMouseMove, handleMouseUp]);
-
-  const resetAuthFlow = useCallback(() => {
-    setMode('awaiting_action');
-    setAction(null);
-    setUsername('');
-    setPassword('');
-    setInput('');
-  }, []);
 
   const handleEnter = useCallback(async () => {
     const command = input.trim();

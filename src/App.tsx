@@ -1,15 +1,12 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { ControlPanel } from './components/ControlPanel';
-import { ChatWindow } from './components/ChatWindow';
-import { MessageInput } from './components/MessageInput';
 import { Header } from './components/Header';
 import { CustomInstructionModal } from './components/CustomInstructionModal';
 import { ThoughtEditorModal } from './components/ThoughtEditorModal';
 import { Terminal } from './components/Terminal';
 import type { EmotionalState, Message, Emotion, TerminalLog, PendingThought, User, Chat } from './types';
-import { getFullAiResponse, generateThoughtAndShifts, generateResponseFromThought, getTextToSpeech } from './services/geminiService';
-import { playAudio } from './utils/audioUtils';
+import { getFullAiResponse, generateThoughtAndShifts, generateResponseFromThought } from './services/geminiService';
 import { ALL_EMOTIONS } from './types';
 import { generateGradientStyle } from './utils/colorUtils';
 import * as auth from './utils/auth';
@@ -72,14 +69,11 @@ export default function App() {
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  const audioContextRef = useRef<AudioContext | null>(null);
   const crazyModeIntervalRef = useRef<number | null>(null);
 
   // --- DERIVED STATE ---
   const activeChat = chats.find(chat => chat.id === activeChatId);
   const messages = activeChat?.messages || [];
-  // FIX: Ensure emotionalState is always a complete object by merging with a default empty state.
-  // This prevents runtime errors if loaded chat data has a partial emotional state.
   const emotionalState: EmotionalState = { ...EMPTY_EMOTIONAL_STATE, ...(activeChat?.emotionalState || {}) };
   
   // --- Core Data & Lifecycle Hooks ---
@@ -116,16 +110,6 @@ export default function App() {
     if (window.innerWidth < 768) {
       setPanelVisible(false);
     }
-     const initAudioContext = () => {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      document.removeEventListener('click', initAudioContext);
-    };
-    document.addEventListener('click', initAudioContext);
-    return () => {
-      document.removeEventListener('click', initAudioContext);
-    };
   }, []);
   
   const setEmotionalStateForActiveChat = useCallback((updater: React.SetStateAction<EmotionalState>) => {
@@ -172,28 +156,15 @@ export default function App() {
   const handleEmotionalShifts = useCallback((shifts: Partial<EmotionalState>) => {
     if (shifts && Object.keys(shifts).length > 0) {
         const shiftLogs = Object.entries(shifts).map(([emotion, newValue]) => {
-          // FIX: Ensure oldValue and newValue are numbers before arithmetic operation to prevent type errors.
-          const oldValue = emotionalState[emotion as Emotion] ?? 0;
-          const diff = (newValue ?? 0) - oldValue;
+          const oldValue = emotionalState[emotion as Emotion];
+          const diff = (newValue || 0) - oldValue;
           const sign = diff >= 0 ? '+' : '';
-          return `${emotion} ${sign}${diff.toFixed(0)} (${oldValue} -> ${newValue ?? 0})`;
+          return `${emotion} ${sign}${diff.toFixed(0)} (${oldValue} -> ${newValue})`;
         });
         addLog(`AI emotional shift detected: ${shiftLogs.join(', ')}`, 'system');
         setEmotionalStateForActiveChat(prev => ({ ...prev, ...shifts }));
     }
   }, [addLog, emotionalState, setEmotionalStateForActiveChat]);
-  
-  const handleFinalResponse = useCallback(async (responseText: string) => {
-      const modelMessage: Message = { role: 'model', content: responseText };
-      setChats(prev => prev.map(chat => chat.id === activeChatId ? { ...chat, messages: [...chat.messages, modelMessage] } : chat));
-
-      if (audioContextRef.current) {
-        const audioData = await getTextToSpeech(responseText);
-        if (audioData) {
-          playAudio(audioData, audioContextRef.current);
-        }
-      }
-  }, [activeChatId]);
   
   const handleSendMessage = useCallback(async (newMessage: string): Promise<string | null> => {
     if (!newMessage.trim() || !activeChat) return null;
@@ -229,7 +200,10 @@ export default function App() {
           addLog(`THOUGHT:\n${thoughtProcess}`, 'thought');
         }
         handleEmotionalShifts(emotionalShifts);
-        await handleFinalResponse(responseText);
+        
+        const modelMessage: Message = { role: 'model', content: responseText };
+        setChats(prev => prev.map(chat => chat.id === activeChatId ? { ...chat, messages: [...chat.messages, modelMessage] } : chat));
+        
         return responseText;
       }
     } catch (error) {
@@ -242,7 +216,7 @@ export default function App() {
     } finally {
       if (!interactiveThought) setIsLoading(false);
     }
-  }, [messages, activeChat, activeChatId, emotionalState, customInstruction, addLog, logThinking, interactiveThought, handleEmotionalShifts, handleFinalResponse]);
+  }, [messages, activeChat, activeChatId, emotionalState, customInstruction, addLog, logThinking, interactiveThought, handleEmotionalShifts]);
   
   const handleApproveThought = useCallback(async (approvedThought: string) => {
     if (!pendingThought || !activeChat) return;
@@ -262,7 +236,9 @@ export default function App() {
             activeChat.messages, newState, approvedThought, customInstruction, forceFidelity
         );
         
-        await handleFinalResponse(responseText);
+        const modelMessage: Message = { role: 'model', content: responseText };
+        setChats(prev => prev.map(chat => chat.id === activeChatId ? { ...chat, messages: [...chat.messages, modelMessage] } : chat));
+        addLog(`AET: ${responseText}`, 'response');
 
     } catch (error) {
         console.error("Error after approving thought:", error);
@@ -271,20 +247,7 @@ export default function App() {
         setIsLoading(false);
         setPendingThought(null);
     }
-  }, [pendingThought, activeChat, emotionalState, customInstruction, logThinking, addLog, handleEmotionalShifts, handleFinalResponse, forceFidelity]);
-
-  const handlePlayAudio = useCallback(async (text: string) => {
-     if (audioContextRef.current) {
-        try {
-            setIsLoading(true);
-            const audioData = await getTextToSpeech(text);
-            if (audioData) { playAudio(audioData, audioContextRef.current); }
-        } catch(error) {
-            console.error("Error generating TTS audio:", error);
-            addLog(`Error during TTS generation: ${(error as Error).message}`, 'error');
-        } finally { setIsLoading(false); }
-    } else { alert("Audio has not been enabled. Please click anywhere on the page first."); }
-  }, [addLog]);
+  }, [pendingThought, activeChat, activeChatId, emotionalState, customInstruction, logThinking, addLog, handleEmotionalShifts, forceFidelity]);
 
   // --- Auth & Data Management ---
 
@@ -529,7 +492,7 @@ export default function App() {
         default:
             addLog(`Error: Unknown command '${action}'. Type 'help' for assistance.`, 'error');
     }
-  }, [addLog, emotionalState, handleSendMessage, logThinking, interactiveThought, forceFidelity, handleClearAllEmotions, currentUser, handleLogout, activeChatId, setEmotionalStateForActiveChat, handleSetIConfiguration, handleLogout, setChats]);
+  }, [addLog, emotionalState, handleSendMessage, logThinking, interactiveThought, forceFidelity, handleClearAllEmotions, currentUser, handleLogout, activeChatId, setEmotionalStateForActiveChat, handleSetIConfiguration]);
 
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col font-sans">
@@ -554,10 +517,7 @@ export default function App() {
            </div>
         </aside>
         <main style={chatBackground} className="flex-1 flex flex-col bg-black/20 transition-all duration-1000 overflow-hidden">
-          <div className="w-full h-full max-w-4xl mx-auto flex flex-col">
-            <ChatWindow messages={messages} isLoading={isLoading} onPlayAudio={handlePlayAudio} />
-            <MessageInput onSendMessage={handleSendMessage} isLoading={isLoading || !currentUser} />
-          </div>
+          {/* The main content area is intentionally left blank to serve as a backdrop for the terminal-focused UI. */}
         </main>
       </div>
       {isCustomInstructionModalOpen && (
@@ -570,6 +530,7 @@ export default function App() {
           onClose={() => {
             setIsThoughtModalOpen(false);
             setPendingThought(null);
+            setIsLoading(false); // Ensure loading is stopped if thought is cancelled
           }}
         />
       )}

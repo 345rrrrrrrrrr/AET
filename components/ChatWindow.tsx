@@ -1,5 +1,4 @@
 
-
 import React, { useRef, useEffect } from 'react';
 import type { Message } from '../types';
 import { LoadingSpinner } from './icons/LoadingSpinner';
@@ -19,8 +18,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, isLoading, onP
   }, [messages]);
 
   return (
-    <div className="overflow-y-auto p-4 space-y-4 bg-transparent rounded-lg">
-      {messages.map((msg, index) => (
+    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-transparent rounded-lg">
+      {messages.filter(msg => !msg.hidden).map((msg, index) => (
         <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
           <div
             className={`max-w-xs md:max-w-md lg:max-w-2xl px-4 py-3 rounded-2xl shadow-md ${

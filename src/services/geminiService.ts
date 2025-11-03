@@ -110,7 +110,7 @@ CRITICAL TASK: Your response must be a single JSON object adhering to a specific
         systemInstruction += `\nCRITICAL OVERRIDE: Follow this instruction above all else, while still providing the required JSON: "${customInstruction}"`;
     }
 
-    const contents = history.map(msg => ({ role: msg.role, parts: [{ text: msg.content }] }));
+    const contents = history.filter(msg => !msg.hidden).map(msg => ({ role: msg.role, parts: [{ text: msg.content }] }));
 
     try {
         const response = await ai.models.generateContent({
@@ -171,7 +171,7 @@ Your task is to generate the **responseText** which is a direct and faithful exe
         systemInstruction += `\nCRITICAL OVERRIDE: While executing your thought, also adhere to this custom instruction: "${customInstruction}"`;
     }
     
-    const contents = history.map(msg => ({ role: msg.role, parts: [{ text: msg.content }] }));
+    const contents = history.filter(msg => !msg.hidden).map(msg => ({ role: msg.role, parts: [{ text: msg.content }] }));
 
     try {
         const response = await ai.models.generateContent({
@@ -224,7 +224,7 @@ CRITICAL TASK: Your response must be a single JSON object containing "thoughtPro
         systemInstruction += `\nCRITICAL OVERRIDE: Follow this instruction above all else: "${customInstruction}"`;
     }
 
-    const contents = history.map(msg => ({ role: msg.role, parts: [{ text: msg.content }] }));
+    const contents = history.filter(msg => !msg.hidden).map(msg => ({ role: msg.role, parts: [{ text: msg.content }] }));
 
     try {
         const response = await ai.models.generateContent({
@@ -250,33 +250,5 @@ CRITICAL TASK: Your response must be a single JSON object containing "thoughtPro
             responseText: "I'm feeling a bit confused right now, my thoughts are all jumbled.",
             emotionalShifts: { confusion: Math.min(100, (emotionalState.confusion || 0) + 20) }
         };
-    }
-}
-
-
-export async function getTextToSpeech(text: string): Promise<string | null> {
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-preview-tts",
-            contents: [{ parts: [{ text: `Say this naturally: ${text}` }] }],
-            config: {
-                responseModalities: [Modality.AUDIO],
-                speechConfig: {
-                    voiceConfig: {
-                      prebuiltVoiceConfig: { voiceName: 'Kore' },
-                    },
-                },
-            },
-        });
-        
-        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-
-        if (base64Audio) {
-            return base64Audio;
-        }
-        return null;
-    } catch(error) {
-        console.error("TTS generation failed:", error);
-        return null;
     }
 }
