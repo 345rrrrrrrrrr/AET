@@ -19,6 +19,7 @@ const getLogColor = (type: TerminalLog['type']): string => {
         case 'response': return 'text-white';
         case 'system': return 'text-yellow-400';
         case 'error': return 'text-red-500';
+        case 'thought': return 'text-cyan-400';
         case 'info':
         default:
             return 'text-gray-300';

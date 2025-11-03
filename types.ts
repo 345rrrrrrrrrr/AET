@@ -1,4 +1,3 @@
-// Fix: Removed circular self-import of 'ALL_EMOTIONS'. This line was causing a conflict.
 export const ALL_EMOTIONS = [
   'shyness', 'awareness', 'stubbornness', 'happiness', 'sadness', 'understanding',
   'anger', 'fear', 'disgust', 'surprise', 'curiosity', 'grief', 'loneliness',
@@ -35,5 +34,10 @@ export type EmotionGroup = keyof typeof EMOTION_GROUPS;
 export interface TerminalLog {
   timestamp: string;
   message: string;
-  type: 'command' | 'response' | 'info' | 'error' | 'system';
+  type: 'command' | 'response' | 'info' | 'error' | 'system' | 'thought';
+}
+
+export interface PendingThought {
+  thoughtProcess: string;
+  emotionalShifts: Partial<EmotionalState>;
 }
