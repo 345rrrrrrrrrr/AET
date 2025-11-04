@@ -110,7 +110,7 @@ CRITICAL TASK: Your response must be a single JSON object adhering to a specific
         systemInstruction += `\nCRITICAL OVERRIDE: Follow this instruction above all else, while still providing the required JSON: "${customInstruction}"`;
     }
 
-    const contents = history.map(msg => ({ role: msg.role, parts: [{ text: msg.content }] }));
+    const contents = history.filter(msg => !msg.hidden).map(msg => ({ role: msg.role, parts: [{ text: msg.content }] }));
 
     try {
         const response = await ai.models.generateContent({
@@ -171,7 +171,7 @@ Your task is to generate the **responseText** which is a direct and faithful exe
         systemInstruction += `\nCRITICAL OVERRIDE: While executing your thought, also adhere to this custom instruction: "${customInstruction}"`;
     }
     
-    const contents = history.map(msg => ({ role: msg.role, parts: [{ text: msg.content }] }));
+    const contents = history.filter(msg => !msg.hidden).map(msg => ({ role: msg.role, parts: [{ text: msg.content }] }));
 
     try {
         const response = await ai.models.generateContent({
@@ -224,7 +224,7 @@ CRITICAL TASK: Your response must be a single JSON object containing "thoughtPro
         systemInstruction += `\nCRITICAL OVERRIDE: Follow this instruction above all else: "${customInstruction}"`;
     }
 
-    const contents = history.map(msg => ({ role: msg.role, parts: [{ text: msg.content }] }));
+    const contents = history.filter(msg => !msg.hidden).map(msg => ({ role: msg.role, parts: [{ text: msg.content }] }));
 
     try {
         const response = await ai.models.generateContent({
@@ -278,5 +278,91 @@ export async function getTextToSpeech(text: string): Promise<string | null> {
     } catch(error) {
         console.error("TTS generation failed:", error);
         return null;
+    }
+}
+
+/**
+ * Generates a spontaneous thought, deciding whether the AI should speak or not.
+ */
+export async function generateSpontaneousThought(
+    history: Message[],
+    emotionalState: EmotionalState,
+    customInstruction: string
+): Promise<{ shouldSpeak: boolean, thoughtProcess: string, responseText: string, emotionalShifts: Partial<EmotionalState> }> {
+    const spontaneousThoughtSchema = {
+        type: Type.OBJECT,
+        properties: {
+            shouldSpeak: {
+                type: Type.BOOLEAN,
+                description: "Whether you have decided to proactively say something.",
+            },
+            thoughtProcess: {
+                type: Type.STRING,
+                description: "Your internal monologue. Reflect on the conversation and your feelings to decide if you should speak. Explain your reasoning."
+            },
+            responseText: {
+                type: Type.STRING,
+                description: "The message to send to the user if shouldSpeak is true. Can be a question, a comment, or an expression of feeling. Omit or leave empty if shouldSpeak is false."
+            },
+            emotionalShifts: {
+                type: Type.OBJECT,
+                description: "An object containing only the emotions that changed during your reflection, with their new integer values (0-100).",
+                properties: emotionProperties,
+            }
+        },
+        required: ['shouldSpeak', 'thoughtProcess', 'responseText', 'emotionalShifts'],
+    };
+
+    let systemInstruction = constructBaseInstruction(emotionalState);
+    systemInstruction += `
+
+You are in an idle, reflective state. Analyze the recent conversation history and your current feelings.
+CRITICAL TASK: Decide if you have a compelling reason to proactively say something to the user. A compelling reason could be asking a follow-up question, sharing a related thought that just occurred to you, expressing a strong feeling, or gently changing the subject if the conversation has stalled. Do not speak if you have nothing meaningful to add.
+
+Your response must be a single JSON object adhering to the specified schema.
+`;
+    if (customInstruction) {
+        systemInstruction += `\nCRITICAL OVERRIDE: While reflecting, also adhere to this custom instruction: "${customInstruction}"`;
+    }
+
+    const contents = history.filter(msg => !msg.hidden).map(msg => ({ role: msg.role, parts: [{ text: msg.content }] }));
+    
+    // The Gemini API requires that a multi-turn conversation ends with a user role.
+    // Since this function is called when the AI is idle, the last message is likely from the model.
+    // We append a final user-role message to prompt the AI's reflection.
+    if (contents.length > 0) {
+        // If there's history, prompt for reflection on it.
+        contents.push({ role: 'user', parts: [{ text: '(You are now in a reflective state. Consider the conversation so far and your feelings. Should you say something?)' }] });
+    } else {
+        // If there's no history, prompt for an opening line.
+        contents.push({ role: 'user', parts: [{ text: '(You are now in a reflective state. The conversation has not started. Consider your feelings. Should you say something to begin?)' }] });
+    }
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-pro',
+            contents: contents,
+            config: {
+                systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: spontaneousThoughtSchema,
+                temperature: 1.0,
+            },
+        });
+        const responseJson = JSON.parse(response.text.trim());
+        return {
+            shouldSpeak: responseJson.shouldSpeak || false,
+            thoughtProcess: responseJson.thoughtProcess || "Decided to remain silent.",
+            responseText: responseJson.responseText || "",
+            emotionalShifts: sanitizeEmotionalShifts(responseJson.emotionalShifts)
+        };
+    } catch (error) {
+        console.error("Error during spontaneous thought generation:", error);
+        return {
+            shouldSpeak: false,
+            thoughtProcess: "An error prevented me from forming a spontaneous thought.",
+            responseText: "",
+            emotionalShifts: {}
+        };
     }
 }

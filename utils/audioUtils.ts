@@ -1,3 +1,4 @@
+import type { Blob } from '@google/genai';
 
 function decode(base64: string): Uint8Array {
   const binaryString = atob(base64);
@@ -39,3 +40,28 @@ export async function playAudio(base64String: string, audioContext: AudioContext
   source.connect(audioContext.destination);
   source.start();
 }
+
+// --- Functions for Live API Audio Encoding ---
+
+function encode(bytes: Uint8Array) {
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+export function createBlob(data: Float32Array): Blob {
+  const l = data.length;
+  const int16 = new Int16Array(l);
+  for (let i = 0; i < l; i++) {
+    int16[i] = data[i] * 32768;
+  }
+  return {
+    data: encode(new Uint8Array(int16.buffer)),
+    mimeType: 'audio/pcm;rate=16000',
+  };
+}
+
+export { decode, decodeAudioData };

@@ -196,9 +196,10 @@ export default function App() {
         const shiftLogs = Object.entries(shifts).map(([emotion, newValue]) => {
           const oldValue = emotionalState[emotion as Emotion] ?? 0;
           // FIX: Coalesce `newValue` to 0 to prevent a type error if it's undefined during the subtraction operation.
-          const diff = (newValue ?? 0) - oldValue;
+          // Fix: Explicitly cast newValue to a number before arithmetic operation to resolve potential type inference issues.
+          const diff = Number(newValue ?? 0) - oldValue;
           const sign = diff >= 0 ? '+' : '';
-          return `${emotion} ${sign}${diff.toFixed(0)} (${oldValue} -> ${newValue ?? 0})`;
+          return `${emotion} ${sign}${diff.toFixed(0)} (${oldValue} -> ${Number(newValue ?? 0)})`;
         });
         addLog(`AI emotional shift detected: ${shiftLogs.join(', ')}`, 'system');
         setEmotionalStateForActiveChat(prev => ({ ...prev, ...shifts }));

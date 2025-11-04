@@ -12,6 +12,8 @@ interface ControlPanelProps {
   onClearAllEmotions: () => void;
   isCrazyMode: boolean;
   onToggleCrazyMode: () => void;
+  isProactiveMode: boolean;
+  onToggleProactiveMode: () => void;
   chats: Chat[];
   activeChatId: string | null;
   onNewChat: () => void;
@@ -72,8 +74,8 @@ const Slider: React.FC<{
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({ 
     emotionalState, setEmotionalState, onCustomInstructionClick, onSetIConfiguration, 
-    onClearAllEmotions, isCrazyMode, onToggleCrazyMode, chats, activeChatId,
-    onNewChat, onSelectChat, isLoggedIn
+    onClearAllEmotions, isCrazyMode, onToggleCrazyMode, isProactiveMode, onToggleProactiveMode,
+    chats, activeChatId, onNewChat, onSelectChat, isLoggedIn
 }) => {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initialState: Record<string, boolean> = {};
@@ -183,6 +185,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             className="w-full py-2 px-4 bg-gray-700 text-white font-bold rounded-md hover:bg-gray-800 transition-colors duration-300 shadow-lg shadow-gray-900/20 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Clear All Emotions
+          </button>
+          <button
+            onClick={onToggleProactiveMode}
+            disabled={!isLoggedIn}
+            className={`w-full py-2 px-4 font-bold rounded-md transition-all duration-300 shadow-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
+              isProactiveMode
+                ? 'bg-cyan-600 text-white shadow-cyan-500/30 hover:bg-cyan-700'
+                : 'bg-gray-600 text-gray-200 shadow-gray-700/30 hover:bg-gray-700'
+            }`}
+          >
+            {isProactiveMode ? 'Deactivate AI Initiative' : 'Activate AI Initiative'}
           </button>
           <button
             onClick={onToggleCrazyMode}
