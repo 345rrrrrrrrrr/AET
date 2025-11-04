@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { TerminalLog, User } from '../types';
 
@@ -78,7 +77,8 @@ export const Terminal: React.FC<TerminalProps> = ({ logs, onCommand, history, on
             addLog("Type 'login' or 'register' to begin.", 'info');
         }
     }
-  }, [currentUser, resetAuthFlow, addLog, logs.length, mode]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, resetAuthFlow, addLog]); // logs.length is intentionally omitted to prevent re-prompting on every new log
 
   useEffect(() => {
     setHistoryIndex(history.length);

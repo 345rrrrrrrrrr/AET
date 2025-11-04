@@ -107,6 +107,28 @@ export default function App() {
   useEffect(() => {
     addLog("Terminal initialized.", 'system');
   }, [addLog]);
+  
+  // Auto-login effect
+  useEffect(() => {
+    const lastUser = localStorage.getItem('aet_last_active_user');
+    if (lastUser) {
+        const users = auth.getUsers();
+        const userData = users[lastUser];
+        if (userData) {
+            const user = { username: lastUser, role: userData.role };
+            const savedData = data.loadUserData(lastUser);
+
+            setCurrentUser(user);
+            setCustomInstruction(savedData.customInstruction);
+            setChats(savedData.chats);
+            setActiveChatId(savedData.activeChatId);
+            addLog(`Session restored for ${lastUser}.`, 'system');
+        } else {
+            // Clean up if user is not found in the database
+            localStorage.removeItem('aet_last_active_user');
+        }
+    }
+  }, [addLog]); 
 
   useEffect(() => {
     setChatBackground(generateGradientStyle(emotionalState));
@@ -307,6 +329,8 @@ export default function App() {
     setCustomInstruction(initialData.customInstruction);
     setChats(initialData.chats);
     setActiveChatId(initialData.activeChatId);
+    
+    localStorage.setItem('aet_last_active_user', username);
 
     addLog(`Account created for '${username}'. Welcome.`, 'system');
     if (role === 'admin') {
@@ -338,6 +362,8 @@ export default function App() {
     setChats(savedData.chats);
     setActiveChatId(savedData.activeChatId);
 
+    localStorage.setItem('aet_last_active_user', username);
+
     addLog(`Login successful. Welcome back, ${username}.`, 'system');
     if (user.role === 'admin') {
         addLog(`ADMINISTRATOR ACCESS GRANTED.`, 'system');
@@ -347,6 +373,7 @@ export default function App() {
 
   const handleLogout = useCallback(() => {
     addLog(`User ${currentUser?.username} logged out.`, 'system');
+    localStorage.removeItem('aet_last_active_user');
     setCurrentUser(null);
     setCustomInstruction('');
     setChats([]);

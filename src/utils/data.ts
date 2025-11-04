@@ -2,7 +2,8 @@
 import type { UserAppState, Chat, EmotionalState, Emotion } from '../types';
 import { ALL_EMOTIONS } from '../types';
 
-const initialEmotionalState: EmotionalState = ALL_EMOTIONS.reduce((acc, emotion) => {
+// Fix: Export initialEmotionalState so it can be used in other files.
+export const initialEmotionalState: EmotionalState = ALL_EMOTIONS.reduce((acc, emotion) => {
     acc[emotion] = 0;
     return acc;
 // Fix: Import Emotion type and cast initial reduce object to EmotionalState to satisfy the compiler.
@@ -16,14 +17,16 @@ Object.assign(initialEmotionalState, {
 
 export function createInitialUserData(): UserAppState {
     const initialChatId = Date.now().toString();
+    // Fix: Add emotionalState to the Chat object, as required by the Chat type.
     const initialChat: Chat = {
         id: initialChatId,
         name: 'New Conversation',
         messages: [{ role: 'model', content: "Hello... how are you feeling today?" }],
         createdAt: Date.now(),
+        emotionalState: { ...initialEmotionalState },
     };
+    // Fix: Return a valid UserAppState object without the top-level emotionalState property.
     return {
-        emotionalState: initialEmotionalState,
         customInstruction: '',
         chats: [initialChat],
         activeChatId: initialChatId,

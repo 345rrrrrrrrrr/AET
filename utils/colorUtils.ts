@@ -1,4 +1,5 @@
 
+import type React from 'react';
 import type { EmotionalState, Emotion } from '../types';
 import { ALL_EMOTIONS } from '../types';
 
