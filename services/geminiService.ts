@@ -282,6 +282,56 @@ export async function getTextToSpeech(text: string): Promise<string | null> {
 }
 
 /**
+ * Creates a detailed image prompt by incorporating the AI's current emotional state.
+ * @param prompt The user's original image prompt.
+ * @param emotionalState The AI's current emotional state.
+ * @returns A new, more descriptive prompt for the image generation model.
+ */
+function createEmotionallyAwareImagePrompt(prompt: string, emotionalState: EmotionalState): string {
+    const prominentEmotions = (Object.keys(emotionalState) as Emotion[])
+      .map(key => ({ emotion: key, value: emotionalState[key] }))
+      .filter(item => item.value > 30) // Only consider emotions with significant presence
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 3); // Use up to the top 3 emotions
+
+    if (prominentEmotions.length === 0) {
+        return prompt; // No strong emotions, use the original prompt
+    }
+
+    const emotionDescriptions = prominentEmotions.map(e => `${e.emotion} (${e.value})`).join(', ');
+    const emotionalContext = `The visual style of the image should strongly reflect a mood of ${emotionDescriptions}. Use lighting, color palette, and composition to convey these feelings.`;
+
+    // Combine the user's request with the emotional context.
+    return `${emotionalContext} The subject of the image is: ${prompt}.`;
+}
+
+export async function generateImage(prompt: string, emotionalState: EmotionalState): Promise<string | null> {
+    try {
+        const emotionallyAwarePrompt = createEmotionallyAwareImagePrompt(prompt, emotionalState);
+        
+        const response = await ai.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt: emotionallyAwarePrompt,
+            config: {
+              numberOfImages: 1,
+              outputMimeType: 'image/jpeg',
+              aspectRatio: '1:1',
+            },
+        });
+
+        const base64ImageBytes: string | undefined = response.generatedImages?.[0]?.image?.imageBytes;
+
+        if (base64ImageBytes) {
+            return base64ImageBytes;
+        }
+        return null;
+    } catch (error) {
+        console.error("Image generation failed:", error);
+        throw error;
+    }
+}
+
+/**
  * Generates a spontaneous thought, deciding whether the AI should speak or not.
  */
 export async function generateSpontaneousThought(

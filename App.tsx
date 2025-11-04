@@ -8,7 +8,7 @@ import { CustomInstructionModal } from './components/CustomInstructionModal';
 import { ThoughtEditorModal } from './components/ThoughtEditorModal';
 import { Terminal } from './components/Terminal';
 import type { EmotionalState, Message, Emotion, TerminalLog, PendingThought, User, Chat } from './types';
-import { getFullAiResponse, generateThoughtAndShifts, generateResponseFromThought, getTextToSpeech, generateSpontaneousThought } from './services/geminiService';
+import { getFullAiResponse, generateThoughtAndShifts, generateResponseFromThought, getTextToSpeech, generateSpontaneousThought, generateImage } from './services/geminiService';
 import { playAudio, createBlob, decode, decodeAudioData } from './utils/audioUtils';
 import { ALL_EMOTIONS } from './types';
 import { generateGradientStyle } from './utils/colorUtils';
@@ -471,6 +471,39 @@ export default function App() {
     };
   }, [isProactiveMode, currentUser, isLoading, isLiveMode, addLog, logThinking, handleEmotionalShifts, handleFinalResponse]);
 
+  const handleGenerateImage = useCallback(async (prompt: string) => {
+    if (!prompt.trim() || !activeChat) return;
+
+    const userMessage: Message = { role: 'user', content: prompt };
+    setChats(prev => prev.map(chat => chat.id === activeChatId ? { ...chat, messages: [...chat.messages, userMessage] } : chat));
+    
+    setIsLoading(true);
+    addLog(`Image generation requested with prompt: "${prompt}"`, 'system');
+
+    try {
+        const base64Image = await generateImage(prompt, emotionalState);
+        if (base64Image) {
+            const imageUrl = `data:image/jpeg;base64,${base64Image}`;
+            const modelMessage: Message = {
+                role: 'model',
+                content: `Here is an image for: "${prompt}"`,
+                imageUrl: imageUrl,
+            };
+            setChats(prev => prev.map(chat => chat.id === activeChatId ? { ...chat, messages: [...chat.messages, modelMessage] } : chat));
+            addLog(`Image successfully generated.`, 'info');
+        } else {
+            throw new Error("Image generation returned no data.");
+        }
+    } catch (error) {
+        console.error("Error generating image:", error);
+        const errorMessage: Message = { role: 'model', content: "Sorry, I couldn't create that image. The request might have been rejected for safety reasons. Please try a different prompt." };
+        setChats(prev => prev.map(chat => chat.id === activeChatId ? { ...chat, messages: [...chat.messages, errorMessage] } : chat));
+        addLog(`Error during image generation: ${(error as Error).message}`, 'error');
+    } finally {
+        setIsLoading(false);
+    }
+  }, [activeChat, activeChatId, addLog, emotionalState]);
+
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col font-sans">
       <Header onTogglePanel={() => setPanelVisible(p => !p)} onToggleTerminal={() => setTerminalVisible(p => !p)} />
@@ -499,7 +532,7 @@ export default function App() {
           <div className="w-full h-full max-w-4xl mx-auto flex flex-col">
             <ChatWindow messages={messages} isLoading={isLoading} onPlayAudio={handlePlayAudio} />
             <div className="p-4 border-t border-purple-500/20 bg-gray-900/50">
-              <MessageInput onSendMessage={handleSendMessage} isLoading={isLoading || !currentUser || isLiveMode} onStartLive={()=>{}} />
+              <MessageInput onSendMessage={handleSendMessage} isLoading={isLoading || !currentUser || isLiveMode} onStartLive={()=>{}} onGenerateImage={handleGenerateImage} />
             </div>
           </div>
         </main>

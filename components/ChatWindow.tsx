@@ -28,8 +28,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, isLoading, onP
                 : 'bg-gray-700 text-gray-200 rounded-bl-none relative group'
             }`}
           >
+            {msg.imageUrl && (
+              <div className="mb-2">
+                <img src={msg.imageUrl} alt={msg.content} className="rounded-lg max-w-full h-auto" />
+              </div>
+            )}
             <p className="whitespace-pre-wrap">{msg.content}</p>
-            {msg.role === 'model' && (
+            {msg.role === 'model' && !msg.imageUrl && (
                <button onClick={() => onPlayAudio(msg.content)} className="absolute -right-4 -bottom-2 p-1 bg-pink-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 outline-none">
                  <PlayIcon className="w-5 h-5 text-white"/>
                </button>

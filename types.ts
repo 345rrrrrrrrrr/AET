@@ -18,6 +18,7 @@ export interface Message {
   role: 'user' | 'model';
   content: string;
   hidden?: boolean;
+  imageUrl?: string;
 }
 
 export const EMOTION_GROUPS = {

@@ -1,7 +1,9 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { SendIcon } from './icons/SendIcon';
 import { MicrophoneIcon } from './icons/MicrophoneIcon';
 import { BroadcastIcon } from './icons/BroadcastIcon';
+import { ImageIcon } from './icons/ImageIcon';
 
 // Extend window type for webkitSpeechRecognition
 declare global {
@@ -16,9 +18,10 @@ interface MessageInputProps {
   onSendMessage: (message: string) => void;
   isLoading: boolean;
   onStartLive: () => void;
+  onGenerateImage: (prompt: string) => void;
 }
 
-export const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, isLoading, onStartLive }) => {
+export const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, isLoading, onStartLive, onGenerateImage }) => {
   const [inputValue, setInputValue] = useState('');
   const [isListening, setIsListening] = useState(false);
   // Fix: Use 'any' as SpeechRecognition type might not be in standard TS lib.
@@ -83,6 +86,12 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, isLoa
     setInputValue('');
   };
 
+  const handleGenerateImageClick = () => {
+    if (isLoading || !inputValue.trim()) return;
+    onGenerateImage(inputValue);
+    setInputValue('');
+  };
+
   return (
       <form onSubmit={handleSubmit} className="flex items-center space-x-3">
         <input
@@ -116,6 +125,16 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, isLoa
           title="Start Live Conversation"
         >
           <BroadcastIcon />
+        </button>
+        <button
+          type="button"
+          onClick={handleGenerateImageClick}
+          disabled={isLoading || !inputValue.trim()}
+          className="p-3 bg-teal-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-teal-700 transition-colors"
+          aria-label="Generate Image"
+          title="Generate Image"
+        >
+          <ImageIcon />
         </button>
         <button
           type="submit"
