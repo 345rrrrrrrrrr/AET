@@ -15,7 +15,6 @@ import { generateGradientStyle } from './utils/colorUtils';
 import * as auth from './utils/auth';
 import * as data from './utils/data';
 import { GoogleGenAI, Modality, LiveServerMessage } from '@google/genai';
-import type { LiveSession } from '@google/genai';
 
 const TRIPOD_OF_SELF_CONFIG: EmotionalState = {
     ...ALL_EMOTIONS.reduce((acc, e) => ({...acc, [e]: 0}), {} as EmotionalState),
@@ -52,11 +51,11 @@ export default function App() {
   const [terminalSize, setTerminalSize] = useState({ width: 700, height: 450 });
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const crazyModeIntervalRef = useRef<number | null>(null);
-  const proactiveTimeoutRef = useRef<number | null>(null);
+  const proactiveIntervalRef = useRef<number | null>(null);
 
   const [isLiveMode, setIsLiveMode] = useState(false);
   const [liveTranscription, setLiveTranscription] = useState({ user: '', model: '' });
-  const sessionPromiseRef = useRef<Promise<LiveSession> | null>(null);
+  const sessionPromiseRef = useRef<Promise<any> | null>(null);
   const inputAudioContextRef = useRef<AudioContext | null>(null);
   const outputAudioContextRef = useRef<AudioContext | null>(null);
   const microphoneStreamRef = useRef<MediaStream | null>(null);
@@ -410,12 +409,14 @@ export default function App() {
 
   // --- Proactive AI Initiative ---
   useEffect(() => {
-    if (proactiveTimeoutRef.current) clearTimeout(proactiveTimeoutRef.current);
+    if (proactiveIntervalRef.current) clearInterval(proactiveIntervalRef.current);
 
-    if (isProactiveMode && currentUser && !isLoading && !isLiveMode) {
-        proactiveTimeoutRef.current = window.setTimeout(async () => {
-            if (!activeChatIdRef.current) return;
-            addLog("AI Initiative: Contemplating...", 'system');
+    if (isProactiveMode && currentUser && activeChatIdRef.current) {
+        proactiveIntervalRef.current = window.setInterval(async () => {
+            // Prevent thoughts from firing while the AI is already responding to the user
+            if (isLoading || isLiveMode || !activeChatIdRef.current) return;
+
+            addLog("AI Initiative: Reflecting...", 'system');
             
             const result = await generateSpontaneousThought(
                 messagesRef.current,
@@ -427,20 +428,28 @@ export default function App() {
                 addLog(`PROACTIVE THOUGHT:\n${result.thoughtProcess}`, 'thought');
             }
             
+            // The AI's emotional state evolves even if it's silent
             if (result.emotionalShifts && Object.keys(result.emotionalShifts).length > 0) {
                 handleEmotionalShifts(result.emotionalShifts);
             }
 
-            if (result.shouldSpeak && result.responseText) {
-                addLog(`AI Initiative: Decided to speak.`, 'system');
-                handleFinalResponse(result.responseText, activeChatIdRef.current);
+            // If the AI generated a response, it speaks.
+            if (result.responseText) {
+                addLog(`AI Initiative: Voicing a spontaneous thought.`, 'system');
+                await handleFinalResponse(result.responseText, activeChatIdRef.current);
             } else {
-                addLog(`AI Initiative: Decided to remain silent after reflection.`, 'system');
+                addLog(`AI Initiative: Reflected internally.`, 'system');
             }
-        }, 15000); 
+        }, 7000); // Fast and continuous reflection cycle (7 seconds)
     }
-    return () => { if (proactiveTimeoutRef.current) clearTimeout(proactiveTimeoutRef.current); };
-  }, [isProactiveMode, isLoading, messages, currentUser, isLiveMode, addLog, logThinking, handleEmotionalShifts, handleFinalResponse]);
+
+    return () => { 
+        if (proactiveIntervalRef.current) {
+            clearInterval(proactiveIntervalRef.current);
+            proactiveIntervalRef.current = null;
+        }
+    };
+  }, [isProactiveMode, currentUser, isLoading, isLiveMode, addLog, logThinking, handleEmotionalShifts, handleFinalResponse]);
 
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col font-sans">

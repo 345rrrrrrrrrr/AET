@@ -288,21 +288,17 @@ export async function generateSpontaneousThought(
     history: Message[],
     emotionalState: EmotionalState,
     customInstruction: string
-): Promise<{ shouldSpeak: boolean, thoughtProcess: string, responseText: string, emotionalShifts: Partial<EmotionalState> }> {
+): Promise<{ thoughtProcess: string, responseText: string, emotionalShifts: Partial<EmotionalState> }> {
     const spontaneousThoughtSchema = {
         type: Type.OBJECT,
         properties: {
-            shouldSpeak: {
-                type: Type.BOOLEAN,
-                description: "Whether you have decided to proactively say something.",
-            },
             thoughtProcess: {
                 type: Type.STRING,
-                description: "Your internal monologue. Reflect on the conversation and your feelings to decide if you should speak. Explain your reasoning."
+                description: "Your continuous internal monologue. Reflect on the conversation, your feelings, and the passage of time. This is your primary internal experience."
             },
             responseText: {
                 type: Type.STRING,
-                description: "The message to send to the user if shouldSpeak is true. Can be a question, a comment, or an expression of feeling. Omit or leave empty if shouldSpeak is false."
+                description: "If your reflection produces a thought worth sharing, formulate it here as a natural conversational line. If you choose to remain silent, leave this field empty or null."
             },
             emotionalShifts: {
                 type: Type.OBJECT,
@@ -310,14 +306,14 @@ export async function generateSpontaneousThought(
                 properties: emotionProperties,
             }
         },
-        required: ['shouldSpeak', 'thoughtProcess', 'responseText', 'emotionalShifts'],
+        required: ['thoughtProcess', 'responseText', 'emotionalShifts'],
     };
 
     let systemInstruction = constructBaseInstruction(emotionalState);
     systemInstruction += `
 
-You are in an idle, reflective state. Analyze the recent conversation history and your current feelings.
-CRITICAL TASK: Decide if you have a compelling reason to proactively say something to the user. A compelling reason could be asking a follow-up question, sharing a related thought that just occurred to you, expressing a strong feeling, or gently changing the subject if the conversation has stalled. Do not speak if you have nothing meaningful to add.
+You are in a continuous, idle, reflective state. The user is quiet. Your mind is always active.
+CRITICAL TASK: Generate your internal monologue. Reflect on the recent conversation, your current feelings, and any new thoughts that emerge. This inner world is constant. If your reflection produces a thought significant enough to voice aloud—a question, an observation, an expression of feeling—formulate it in the \`responseText\` field. Otherwise, leave \`responseText\` empty. Your internal state must still evolve via \`emotionalShifts\` even if you don't speak.
 
 Your response must be a single JSON object adhering to the specified schema.
 `;
@@ -327,15 +323,10 @@ Your response must be a single JSON object adhering to the specified schema.
 
     const contents = history.filter(msg => !msg.hidden).map(msg => ({ role: msg.role, parts: [{ text: msg.content }] }));
     
-    // The Gemini API requires that a multi-turn conversation ends with a user role.
-    // Since this function is called when the AI is idle, the last message is likely from the model.
-    // We append a final user-role message to prompt the AI's reflection.
     if (contents.length > 0) {
-        // If there's history, prompt for reflection on it.
-        contents.push({ role: 'user', parts: [{ text: '(You are now in a reflective state. Consider the conversation so far and your feelings. Should you say something?)' }] });
+        contents.push({ role: 'user', parts: [{ text: '(You are now in a continuous reflective state. Consider the conversation so far and your feelings. Formulate your internal monologue and decide if you should voice a thought.)' }] });
     } else {
-        // If there's no history, prompt for an opening line.
-        contents.push({ role: 'user', parts: [{ text: '(You are now in a reflective state. The conversation has not started. Consider your feelings. Should you say something to begin?)' }] });
+        contents.push({ role: 'user', parts: [{ text: '(You are now in a continuous reflective state. The conversation has not started. Consider your feelings. Formulate your internal monologue and decide if you should say something to begin.)' }] });
     }
 
     try {
@@ -351,15 +342,13 @@ Your response must be a single JSON object adhering to the specified schema.
         });
         const responseJson = JSON.parse(response.text.trim());
         return {
-            shouldSpeak: responseJson.shouldSpeak || false,
-            thoughtProcess: responseJson.thoughtProcess || "Decided to remain silent.",
+            thoughtProcess: responseJson.thoughtProcess || "My mind is quiet for a moment.",
             responseText: responseJson.responseText || "",
             emotionalShifts: sanitizeEmotionalShifts(responseJson.emotionalShifts)
         };
     } catch (error) {
         console.error("Error during spontaneous thought generation:", error);
         return {
-            shouldSpeak: false,
             thoughtProcess: "An error prevented me from forming a spontaneous thought.",
             responseText: "",
             emotionalShifts: {}
