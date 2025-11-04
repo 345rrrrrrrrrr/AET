@@ -76,12 +76,32 @@ export default function App() {
   customInstructionRef.current = customInstruction;
   const activeChatIdRef = useRef(activeChatId);
   activeChatIdRef.current = activeChatId;
+  const chatsRef = useRef(chats);
+  chatsRef.current = chats;
 
   useEffect(() => {
     if (currentUser) {
       data.saveUserData(currentUser.username, { customInstruction, chats, activeChatId });
     }
   }, [customInstruction, chats, activeChatId, currentUser]);
+
+  // Add robust saving on page close/refresh
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (currentUser) {
+        // Use refs to ensure we get the latest state inside the event listener
+        data.saveUserData(currentUser.username, {
+          customInstruction: customInstructionRef.current,
+          chats: chatsRef.current,
+          activeChatId: activeChatIdRef.current,
+        });
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [currentUser]);
 
   const addLog = useCallback((message: string, type: TerminalLog['type'] = 'info') => {
     const newLog: TerminalLog = {
