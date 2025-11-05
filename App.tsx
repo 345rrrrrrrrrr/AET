@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { ChatWindow } from './components/ChatWindow';
@@ -7,8 +6,12 @@ import { Header } from './components/Header';
 import { CustomInstructionModal } from './components/CustomInstructionModal';
 import { ThoughtEditorModal } from './components/ThoughtEditorModal';
 import { Terminal } from './components/Terminal';
+import { LiveTranscriptionOverlay } from './components/LiveTranscriptionOverlay';
+import { CameraFeed } from './components/CameraFeed';
+import { LoginOverlay } from './components/LoginOverlay';
+import { AboutModal } from './components/AboutModal'; // Import the new modal
 import type { EmotionalState, Message, Emotion, TerminalLog, PendingThought, User, Chat } from './types';
-import { getFullAiResponse, generateThoughtAndShifts, generateResponseFromThought, getTextToSpeech, generateSpontaneousThought, generateImage } from './services/geminiService';
+import { getFullAiResponse, generateThoughtAndShifts, generateResponseFromThought, getTextToSpeech, generateSpontaneousThought, generateImage, getEmotionalShiftsFromText, analyzeImageFrame } from './services/geminiService';
 import { playAudio, createBlob, decode, decodeAudioData } from './utils/audioUtils';
 import { ALL_EMOTIONS } from './types';
 import { generateGradientStyle } from './utils/colorUtils';
@@ -29,12 +32,15 @@ const EMPTY_EMOTIONAL_STATE: EmotionalState = ALL_EMOTIONS.reduce((acc, emotion)
     return acc;
 }, {} as EmotionalState);
 
+const ABOUT_MODAL_SEEN_KEY = 'aet_has_seen_about_modal';
+
 export default function App() {
   const [customInstruction, setCustomInstruction] = useState('');
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isCustomInstructionModalOpen, setCustomInstructionModalOpen] = useState(false);
+  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false); // New state for About modal
   const [isPanelVisible, setPanelVisible] = useState(true);
   const [isTerminalVisible, setTerminalVisible] = useState(true);
   const [terminalLogs, setTerminalLogs] = useState<TerminalLog[]>([]);
@@ -63,6 +69,11 @@ export default function App() {
   const playingAudioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const nextStartTimeRef = useRef(0);
   const currentTranscriptionTurnRef = useRef({ user: '', model: '' });
+  const fullLiveTranscriptRef = useRef<string[]>([]);
+
+  const [isCameraMode, setIsCameraMode] = useState(false);
+  const cameraFrameIntervalRef = useRef<number | null>(null);
+  const [isAnalyzingFrame, setIsAnalyzingFrame] = useState(false);
 
   const activeChat = chats.find(chat => chat.id === activeChatId);
   const messages = activeChat?.messages || [];
@@ -85,11 +96,9 @@ export default function App() {
     }
   }, [customInstruction, chats, activeChatId, currentUser]);
 
-  // Add robust saving on page close/refresh
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (currentUser) {
-        // Use refs to ensure we get the latest state inside the event listener
         data.saveUserData(currentUser.username, {
           customInstruction: customInstructionRef.current,
           chats: chatsRef.current,
@@ -111,6 +120,19 @@ export default function App() {
     };
     setTerminalLogs(prev => [...prev.slice(-100), newLog]);
   }, []);
+  
+  // Show About modal on first visit
+  useEffect(() => {
+    const hasSeenModal = localStorage.getItem(ABOUT_MODAL_SEEN_KEY);
+    if (!hasSeenModal) {
+      setIsAboutModalOpen(true);
+    }
+  }, []);
+
+  const handleCloseAboutModal = () => {
+    setIsAboutModalOpen(false);
+    localStorage.setItem(ABOUT_MODAL_SEEN_KEY, 'true');
+  };
 
   useEffect(() => {
     addLog("Terminal initialized.", 'system');
@@ -126,6 +148,8 @@ export default function App() {
         } else {
             localStorage.removeItem('aet_last_active_user');
         }
+    } else {
+      setTerminalVisible(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); 
@@ -201,7 +225,7 @@ export default function App() {
 
       if (outputAudioContextRef.current) {
         const audioData = await getTextToSpeech(responseText);
-        if (audioData) playAudio(audioData, outputAudioContextRef.current);
+        if (audioData) playAudio(audioData, outputAudioContextRef.current, 24000);
       }
   }, []);
   
@@ -265,7 +289,7 @@ export default function App() {
         try {
             setIsLoading(true);
             const audioData = await getTextToSpeech(text);
-            if (audioData) { playAudio(audioData, outputAudioContextRef.current); }
+            if (audioData) { playAudio(audioData, outputAudioContextRef.current, 24000); }
         } catch(error) {
             console.error("Error generating TTS audio:", error);
             addLog(`Error during TTS generation: ${(error as Error).message}`, 'error');
@@ -328,6 +352,7 @@ export default function App() {
     setCustomInstruction('');
     setChats([]);
     setActiveChatId(null);
+    setTerminalVisible(true);
   }, [currentUser, addLog]);
 
   const handleSetIConfiguration = useCallback(() => {
@@ -427,86 +452,223 @@ export default function App() {
     }
   }, [currentUser, addLog, handleLogout, handleSendMessage, setEmotionalStateForActiveChat, emotionalState, activeChatId]);
 
-  // --- Proactive AI Initiative ---
   useEffect(() => {
     if (proactiveIntervalRef.current) clearInterval(proactiveIntervalRef.current);
-
     if (isProactiveMode && currentUser && activeChatIdRef.current) {
         proactiveIntervalRef.current = window.setInterval(async () => {
-            // Prevent thoughts from firing while the AI is already responding to the user
             if (isLoading || isLiveMode || !activeChatIdRef.current) return;
-
             addLog("AI Initiative: Reflecting...", 'system');
-            
-            const result = await generateSpontaneousThought(
-                messagesRef.current,
-                emotionalStateRef.current,
-                customInstructionRef.current
-            );
-            
-            if (result.thoughtProcess && logThinking) {
-                addLog(`PROACTIVE THOUGHT:\n${result.thoughtProcess}`, 'thought');
-            }
-            
-            // The AI's emotional state evolves even if it's silent
-            if (result.emotionalShifts && Object.keys(result.emotionalShifts).length > 0) {
-                handleEmotionalShifts(result.emotionalShifts);
-            }
-
-            // If the AI generated a response, it speaks.
+            const result = await generateSpontaneousThought(messagesRef.current, emotionalStateRef.current, customInstructionRef.current);
+            if (result.thoughtProcess && logThinking) addLog(`PROACTIVE THOUGHT:\n${result.thoughtProcess}`, 'thought');
+            if (result.emotionalShifts && Object.keys(result.emotionalShifts).length > 0) handleEmotionalShifts(result.emotionalShifts);
             if (result.responseText) {
                 addLog(`AI Initiative: Voicing a spontaneous thought.`, 'system');
                 await handleFinalResponse(result.responseText, activeChatIdRef.current);
-            } else {
-                addLog(`AI Initiative: Reflected internally.`, 'system');
-            }
-        }, 7000); // Fast and continuous reflection cycle (7 seconds)
+            } else { addLog(`AI Initiative: Reflected internally.`, 'system'); }
+        }, 7000);
     }
-
-    return () => { 
-        if (proactiveIntervalRef.current) {
-            clearInterval(proactiveIntervalRef.current);
-            proactiveIntervalRef.current = null;
-        }
-    };
+    return () => { if (proactiveIntervalRef.current) { clearInterval(proactiveIntervalRef.current); proactiveIntervalRef.current = null; } };
   }, [isProactiveMode, currentUser, isLoading, isLiveMode, addLog, logThinking, handleEmotionalShifts, handleFinalResponse]);
 
   const handleGenerateImage = useCallback(async (prompt: string) => {
     if (!prompt.trim() || !activeChat) return;
-
     const userMessage: Message = { role: 'user', content: prompt };
     setChats(prev => prev.map(chat => chat.id === activeChatId ? { ...chat, messages: [...chat.messages, userMessage] } : chat));
-    
     setIsLoading(true);
     addLog(`Image generation requested with prompt: "${prompt}"`, 'system');
-
     try {
         const base64Image = await generateImage(prompt, emotionalState);
         if (base64Image) {
             const imageUrl = `data:image/jpeg;base64,${base64Image}`;
-            const modelMessage: Message = {
-                role: 'model',
-                content: `Here is an image for: "${prompt}"`,
-                imageUrl: imageUrl,
-            };
+            const modelMessage: Message = { role: 'model', content: `Here is an image for: "${prompt}"`, imageUrl: imageUrl };
             setChats(prev => prev.map(chat => chat.id === activeChatId ? { ...chat, messages: [...chat.messages, modelMessage] } : chat));
             addLog(`Image successfully generated.`, 'info');
-        } else {
-            throw new Error("Image generation returned no data.");
-        }
+        } else { throw new Error("Image generation returned no data."); }
     } catch (error) {
         console.error("Error generating image:", error);
         const errorMessage: Message = { role: 'model', content: "Sorry, I couldn't create that image. The request might have been rejected for safety reasons. Please try a different prompt." };
         setChats(prev => prev.map(chat => chat.id === activeChatId ? { ...chat, messages: [...chat.messages, errorMessage] } : chat));
         addLog(`Error during image generation: ${(error as Error).message}`, 'error');
-    } finally {
-        setIsLoading(false);
-    }
+    } finally { setIsLoading(false); }
   }, [activeChat, activeChatId, addLog, emotionalState]);
+
+  const handleToggleLiveMode = useCallback(async () => {
+    if (isLiveMode) {
+      // --- STOP LIVE SESSION ---
+      addLog('Live session ended.', 'system');
+      setIsLiveMode(false);
+      
+      sessionPromiseRef.current?.then(session => session.close());
+      scriptProcessorRef.current?.disconnect();
+      microphoneStreamRef.current?.getTracks().forEach(track => track.stop());
+
+      // Save the transcript
+      if (fullLiveTranscriptRef.current.length > 0) {
+        const transcriptContent = "--- BEGIN LIVE TRANSCRIPT ---\n" + fullLiveTranscriptRef.current.join('\n') + "\n--- END LIVE TRANSCRIPT ---";
+        const transcriptMessage: Message = { role: 'model', content: transcriptContent };
+        setChats(prev => prev.map(chat => chat.id === activeChatIdRef.current ? { ...chat, messages: [...chat.messages, transcriptMessage] } : chat));
+      }
+      
+      // Reset refs and state
+      sessionPromiseRef.current = null;
+      scriptProcessorRef.current = null;
+      microphoneStreamRef.current = null;
+      currentTranscriptionTurnRef.current = { user: '', model: '' };
+      fullLiveTranscriptRef.current = [];
+      setLiveTranscription({ user: '', model: '' });
+
+    } else {
+      // --- START LIVE SESSION ---
+      if (!inputAudioContextRef.current || !outputAudioContextRef.current) {
+        addLog('Audio contexts not initialized. Please click on the page first.', 'error');
+        return;
+      }
+      addLog('Starting live session... Please grant microphone permission.', 'system');
+      setIsLiveMode(true);
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+      sessionPromiseRef.current = ai.live.connect({
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        callbacks: {
+          onopen: async () => {
+            addLog('Live connection opened. Start speaking.', 'system');
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            microphoneStreamRef.current = stream;
+            const source = inputAudioContextRef.current!.createMediaStreamSource(stream);
+            const scriptProcessor = inputAudioContextRef.current!.createScriptProcessor(4096, 1, 1);
+            scriptProcessorRef.current = scriptProcessor;
+
+            scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
+              const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+              const pcmBlob = createBlob(inputData);
+              sessionPromiseRef.current?.then((session) => {
+                session.sendRealtimeInput({ media: pcmBlob });
+              });
+            };
+            source.connect(scriptProcessor);
+            scriptProcessor.connect(inputAudioContextRef.current!.destination);
+          },
+          onmessage: async (message: LiveServerMessage) => {
+            const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+            if (base64Audio) {
+              const audioCtx = outputAudioContextRef.current!;
+              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, audioCtx.currentTime);
+              const audioBuffer = await decodeAudioData(decode(base64Audio), audioCtx, 24000, 1);
+              const source = audioCtx.createBufferSource();
+              source.buffer = audioBuffer;
+              source.connect(audioCtx.destination);
+              source.addEventListener('ended', () => playingAudioSourcesRef.current.delete(source));
+              source.start(nextStartTimeRef.current);
+              nextStartTimeRef.current += audioBuffer.duration;
+              playingAudioSourcesRef.current.add(source);
+            }
+            if (message.serverContent?.interrupted) {
+              for (const source of playingAudioSourcesRef.current.values()) {
+                source.stop();
+                playingAudioSourcesRef.current.delete(source);
+              }
+              nextStartTimeRef.current = 0;
+            }
+            if (message.serverContent?.inputTranscription) {
+              const text = message.serverContent.inputTranscription.text;
+              currentTranscriptionTurnRef.current.user += text;
+              setLiveTranscription(prev => ({ ...prev, user: currentTranscriptionTurnRef.current.user }));
+            }
+            if (message.serverContent?.outputTranscription) {
+              const text = message.serverContent.outputTranscription.text;
+              currentTranscriptionTurnRef.current.model += text;
+              setLiveTranscription(prev => ({ ...prev, model: currentTranscriptionTurnRef.current.model }));
+            }
+            if (message.serverContent?.turnComplete) {
+              const userTurn = currentTranscriptionTurnRef.current.user.trim();
+              const modelTurn = currentTranscriptionTurnRef.current.model.trim();
+
+              if (userTurn) fullLiveTranscriptRef.current.push(`USER: ${userTurn}`);
+              if (modelTurn) fullLiveTranscriptRef.current.push(`AET: ${modelTurn}`);
+              
+              if (userTurn || modelTurn) {
+                const shifts = await getEmotionalShiftsFromText(userTurn, modelTurn, emotionalStateRef.current, customInstructionRef.current);
+                handleEmotionalShifts(shifts);
+              }
+              currentTranscriptionTurnRef.current = { user: '', model: '' };
+              setLiveTranscription({ user: '', model: '' });
+            }
+          },
+          onerror: (e: ErrorEvent) => {
+            addLog(`Live session error: ${e.message}`, 'error');
+            handleToggleLiveMode(); // Stop the session on error
+          },
+          onclose: (e: CloseEvent) => {
+            addLog('Live connection closed.', 'system');
+          },
+        },
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
+          systemInstruction: 'You are a friendly and helpful AI companion. Keep your responses concise and conversational.'
+        },
+      });
+    }
+  }, [isLiveMode, addLog, handleEmotionalShifts]);
+
+  const handleToggleCameraMode = useCallback((videoEl: HTMLVideoElement | null) => {
+    if (isCameraMode) {
+      setIsCameraMode(false);
+      if (cameraFrameIntervalRef.current) {
+        clearInterval(cameraFrameIntervalRef.current);
+        cameraFrameIntervalRef.current = null;
+      }
+      addLog('Visual Cortex deactivated.', 'system');
+    } else {
+      setIsCameraMode(true);
+      addLog('Visual Cortex activated. Analyzing frames...', 'system');
+      cameraFrameIntervalRef.current = window.setInterval(async () => {
+        if (!videoEl || isAnalyzingFrame) return;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = videoEl.videoWidth;
+        canvas.height = videoEl.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        
+        canvas.toBlob(async (blob) => {
+            if (!blob) return;
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+                const base64Data = (reader.result as string).split(',')[1];
+                setIsAnalyzingFrame(true);
+                addLog('Analyzing visual frame...', 'info');
+                try {
+                  const { responseText, emotionalShifts } = await analyzeImageFrame(
+                    base64Data, 
+                    messagesRef.current, 
+                    emotionalStateRef.current, 
+                    customInstructionRef.current
+                  );
+                  if (responseText) {
+                    addLog(`Visual Analysis: ${responseText}`, 'response');
+                    await handleFinalResponse(responseText, activeChatIdRef.current);
+                  }
+                  handleEmotionalShifts(emotionalShifts);
+                } catch (e) {
+                  addLog(`Visual analysis failed: ${(e as Error).message}`, 'error');
+                } finally {
+                  setIsAnalyzingFrame(false);
+                }
+            };
+            reader.readAsDataURL(blob);
+        }, 'image/jpeg', 0.8);
+
+      }, 5000); // Analyze a frame every 5 seconds
+    }
+  }, [isCameraMode, addLog, isAnalyzingFrame, handleFinalResponse, handleEmotionalShifts]);
 
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col font-sans">
-      <Header onTogglePanel={() => setPanelVisible(p => !p)} onToggleTerminal={() => setTerminalVisible(p => !p)} />
+      <Header onTogglePanel={() => setPanelVisible(p => !p)} onToggleTerminal={() => setTerminalVisible(p => !p)} onOpenAbout={() => setIsAboutModalOpen(true)} />
       <div className="flex flex-1 flex-col md:flex-row overflow-hidden">
         <aside className={`transition-all duration-300 ease-in-out ${isPanelVisible ? 'w-full md:w-1/3 lg:w-1/4 md:p-4' : 'w-0 p-0'} overflow-hidden`}>
            <div className="h-full overflow-y-auto">
@@ -529,14 +691,29 @@ export default function App() {
            </div>
         </aside>
         <main style={chatBackground} className="flex-1 flex flex-col bg-black/20 transition-all duration-1000 overflow-hidden relative">
-          <div className="w-full h-full max-w-4xl mx-auto flex flex-col">
-            <ChatWindow messages={messages} isLoading={isLoading} onPlayAudio={handlePlayAudio} />
-            <div className="p-4 border-t border-purple-500/20 bg-gray-900/50">
-              <MessageInput onSendMessage={handleSendMessage} isLoading={isLoading || !currentUser || isLiveMode} onStartLive={()=>{}} onGenerateImage={handleGenerateImage} />
+          {!currentUser ? (
+             <LoginOverlay onOpenTerminal={() => setTerminalVisible(true)} />
+          ) : (
+            <div className="w-full max-w-4xl mx-auto flex flex-col flex-1">
+              <ChatWindow messages={messages} isLoading={isLoading || isAnalyzingFrame} onPlayAudio={handlePlayAudio} />
+              <div className="p-4 border-t border-purple-500/20 bg-gray-900/50">
+                <MessageInput 
+                  onSendMessage={handleSendMessage} 
+                  isLoading={isLoading || !currentUser}
+                  isLiveMode={isLiveMode}
+                  onToggleLiveMode={handleToggleLiveMode} 
+                  onGenerateImage={handleGenerateImage}
+                  isCameraMode={isCameraMode}
+                  onToggleCameraMode={() => handleToggleCameraMode(document.querySelector('#camera-feed-video'))}
+                />
+              </div>
             </div>
-          </div>
+          )}
+          {isLiveMode && <LiveTranscriptionOverlay userText={liveTranscription.user} modelText={liveTranscription.model} />}
+          {isCameraMode && <CameraFeed onToggle={handleToggleCameraMode} />}
         </main>
       </div>
+      {isAboutModalOpen && <AboutModal onClose={handleCloseAboutModal} />}
       {isCustomInstructionModalOpen && <CustomInstructionModal onClose={() => setCustomInstructionModalOpen(false)} onSave={setCustomInstruction} currentInstruction={customInstruction} />}
       {isThoughtModalOpen && pendingThought && <ThoughtEditorModal thoughtProcess={pendingThought.thoughtProcess} onApprove={handleApproveThought} onClose={() => { setIsThoughtModalOpen(false); setPendingThought(null); }} />}
       {isTerminalVisible && <Terminal logs={terminalLogs} onCommand={handleTerminalCommand} history={commandHistory} onClose={() => setTerminalVisible(false)} position={terminalPosition} setPosition={setTerminalPosition} size={terminalSize} setSize={setTerminalSize} currentUser={currentUser} onRegister={handleRegister} onLogin={handleLogin} addLog={addLog} />}

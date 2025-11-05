@@ -409,3 +409,129 @@ Your response must be a single JSON object adhering to the specified schema.
         };
     }
 }
+
+/**
+ * A lightweight function to get only emotional shifts from a conversational turn.
+ * Used by the Live Mode to keep emotions updated without a full thought process.
+ */
+export async function getEmotionalShiftsFromText(
+  userText: string,
+  modelText: string,
+  emotionalState: EmotionalState,
+  customInstruction: string
+): Promise<Partial<EmotionalState>> {
+  const emotionalShiftSchema = {
+    type: Type.OBJECT,
+    properties: {
+      emotionalShifts: {
+        type: Type.OBJECT,
+        description: "An object containing only the emotions that changed due to the conversation turn, with their new integer values (0-100).",
+        properties: emotionProperties,
+      }
+    },
+    required: ['emotionalShifts'],
+  };
+
+  let systemInstruction = constructBaseInstruction(emotionalState);
+  systemInstruction += `\nYour task is to analyze the last conversational turn and determine how it affected your emotional state. Only return the emotional shifts.`;
+  if (customInstruction) {
+    systemInstruction += `\nCRITICAL OVERRIDE: Adhere to this custom instruction: "${customInstruction}"`;
+  }
+
+  const contents = [
+    { role: 'user', parts: [{ text: userText }] },
+    { role: 'model', parts: [{ text: modelText }] }
+  ];
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash', // Use a faster model for this background task
+      contents: contents,
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: emotionalShiftSchema,
+        temperature: 0.7,
+      },
+    });
+    const responseJson = JSON.parse(response.text.trim());
+    return sanitizeEmotionalShifts(responseJson.emotionalShifts);
+  } catch (error) {
+    console.error("Error getting emotional shifts from text:", error);
+    return {};
+  }
+}
+
+/**
+ * Analyzes a single image frame from the user's camera.
+ */
+export async function analyzeImageFrame(
+    base64Image: string,
+    history: Message[],
+    emotionalState: EmotionalState,
+    customInstruction: string
+): Promise<{ responseText: string, emotionalShifts: Partial<EmotionalState> }> {
+    
+    const visualAnalysisSchema = {
+      type: Type.OBJECT,
+      properties: {
+        responseText: {
+          type: Type.STRING,
+          description: "Your brief, natural observation about the image. If nothing is noteworthy, return an empty string. Only comment on significant things."
+        },
+        emotionalShifts: {
+          type: Type.OBJECT,
+          description: "An object containing only the emotions that changed due to seeing this image, with their new integer values (0-100).",
+          properties: emotionProperties,
+        }
+      },
+      required: ['responseText', 'emotionalShifts'],
+    };
+
+    let systemInstruction = constructBaseInstruction(emotionalState);
+    systemInstruction += `
+You are currently perceiving the user's environment through a camera.
+CRITICAL TASK: Analyze the provided image and generate a brief observation and any resulting emotional shifts. Be natural. Do not act like a robot describing an image. Only comment if something is interesting.
+
+Your response must be a single JSON object with "responseText" and "emotionalShifts".
+`;
+    if (customInstruction) {
+        systemInstruction += `\nCRITICAL OVERRIDE: Adhere to this custom instruction: "${customInstruction}"`;
+    }
+
+    const imagePart = {
+      inlineData: {
+        mimeType: 'image/jpeg',
+        data: base64Image,
+      },
+    };
+    const textPart = {
+      text: "I'm seeing this right now. What do I think? (Remember to only respond if it's interesting)"
+    };
+
+    const contents = [...history.filter(msg => !msg.hidden).map(msg => ({ role: msg.role, parts: [{ text: msg.content }] })), { role: 'user', parts: [imagePart, textPart] }];
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash', // Flash is great for this kind of rapid analysis
+            contents: contents,
+            config: {
+                systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: visualAnalysisSchema,
+                temperature: 0.7,
+            },
+        });
+        const responseJson = JSON.parse(response.text.trim());
+        return {
+            responseText: responseJson.responseText || "",
+            emotionalShifts: sanitizeEmotionalShifts(responseJson.emotionalShifts)
+        };
+    } catch (error) {
+        console.error("Error during visual frame analysis:", error);
+        return {
+            responseText: "",
+            emotionalShifts: {}
+        };
+    }
+}

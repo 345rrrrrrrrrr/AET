@@ -17,6 +17,19 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, isLoading, onP
     endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const getLoadingMessage = () => {
+    // This is a simple way to hint at different loading states.
+    // In a more complex app, a more robust state would be passed.
+    if (isLoading) {
+      const lastUserMessage = messages.filter(m => m.role === 'user').pop()?.content.toLowerCase() || '';
+      if (lastUserMessage.includes('image') || lastUserMessage.includes('generate')) {
+        return 'Creating...';
+      }
+      return 'Thinking...';
+    }
+    return 'Analyzing...'; // Default for other loading states like visual analysis
+  }
+
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-transparent rounded-lg">
       {messages.filter(msg => !msg.hidden).map((msg, index) => (
@@ -46,7 +59,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, isLoading, onP
         <div className="flex justify-start">
           <div className="bg-gray-700 text-gray-200 rounded-2xl rounded-bl-none px-4 py-3 shadow-md flex items-center">
             <LoadingSpinner />
-            <span className="ml-2 animate-pulse">Thinking...</span>
+            <span className="ml-2 animate-pulse">{getLoadingMessage()}</span>
           </div>
         </div>
       )}

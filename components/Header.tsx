@@ -1,13 +1,15 @@
 import React from 'react';
 import { SettingsIcon } from './icons/SettingsIcon';
 import { TerminalIcon } from './icons/TerminalIcon';
+import { InfoIcon } from './icons/InfoIcon'; // Import the new icon
 
 interface HeaderProps {
     onTogglePanel: () => void;
     onToggleTerminal: () => void;
+    onOpenAbout: () => void; // Add a new prop to handle opening the About modal
 }
 
-export const Header: React.FC<HeaderProps> = ({ onTogglePanel, onToggleTerminal }) => {
+export const Header: React.FC<HeaderProps> = ({ onTogglePanel, onToggleTerminal, onOpenAbout }) => {
   return (
     <header className="p-4 border-b border-purple-500/30 shadow-lg shadow-purple-900/50 bg-black/30 flex items-center justify-between">
       {/* Left Group: Action Buttons */}
@@ -26,6 +28,13 @@ export const Header: React.FC<HeaderProps> = ({ onTogglePanel, onToggleTerminal 
         >
           <TerminalIcon className="w-6 h-6" />
         </button>
+        <button 
+          onClick={onOpenAbout} 
+          className="p-2 rounded-full text-purple-400 hover:bg-purple-500/20 hover:text-white transition-colors"
+          aria-label="Open about modal"
+        >
+          <InfoIcon className="w-6 h-6" />
+        </button>
       </div>
 
       {/* Middle Group: Title */}
@@ -43,6 +52,9 @@ export const Header: React.FC<HeaderProps> = ({ onTogglePanel, onToggleTerminal 
         </div>
         <div className="p-2 rounded-full">
           <TerminalIcon className="w-6 h-6" />
+        </div>
+         <div className="p-2 rounded-full">
+          <InfoIcon className="w-6 h-6" />
         </div>
       </div>
     </header>

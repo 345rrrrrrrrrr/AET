@@ -1,3 +1,4 @@
+
 import type { Blob } from '@google/genai';
 
 function decode(base64: string): Uint8Array {
@@ -29,12 +30,12 @@ async function decodeAudioData(
   return buffer;
 }
 
-export async function playAudio(base64String: string, audioContext: AudioContext): Promise<void> {
+export async function playAudio(base64String: string, audioContext: AudioContext, sampleRate: number): Promise<void> {
   if (audioContext.state === 'suspended') {
     await audioContext.resume();
   }
   const decodedData = decode(base64String);
-  const audioBuffer = await decodeAudioData(decodedData, audioContext, 24000, 1);
+  const audioBuffer = await decodeAudioData(decodedData, audioContext, sampleRate, 1);
   const source = audioContext.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(audioContext.destination);
