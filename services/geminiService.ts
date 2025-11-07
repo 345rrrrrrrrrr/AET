@@ -7,28 +7,41 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const modelName = 'gemini-2.5-pro';
 
+const emotionalShiftsArraySchema = {
+    type: Type.ARRAY,
+    description: "An array of objects for each emotion that has changed. Each object must have an 'emotion' (the string name) and a 'value' (the new integer value from 0-100). Only include emotions that actually changed. If no emotions changed, return an empty array. Example: [{\"emotion\": \"happiness\", \"value\": 75}]",
+    items: {
+        type: Type.OBJECT,
+        properties: {
+            emotion: { type: Type.STRING, description: "The name of the emotion that changed." },
+            value: { type: Type.NUMBER, description: "The new integer value for the emotion (0-100)." },
+        },
+        required: ['emotion', 'value'],
+    }
+};
+
+
 // --- Helper to Sanitize API Response ---
 
 /**
- * Defensively processes the emotionalShifts object from the API.
- * Ensures all values are valid numbers and clamps them between 0 and 100.
- * This prevents type errors if the API returns a string or an out-of-range number.
- * @param shifts The raw emotionalShifts object from the API response.
+ * Defensively processes the emotionalShifts array from the API.
+ * Converts an array of {emotion, value} objects into a Partial<EmotionalState>.
+ * @param shifts The raw emotionalShifts array from the API response.
  * @returns A sanitized Partial<EmotionalState> object.
  */
 function sanitizeEmotionalShifts(shifts: any): Partial<EmotionalState> {
-    if (!shifts || typeof shifts !== 'object') {
+    if (!Array.isArray(shifts)) {
         return {};
     }
 
     const sanitizedShifts: Partial<EmotionalState> = {};
-    for (const key in shifts) {
-        if (Object.prototype.hasOwnProperty.call(shifts, key) && ALL_EMOTIONS.includes(key as Emotion)) {
-            const value = shifts[key];
-            if (value !== null && value !== undefined) {
-                const numValue = Number(value);
-                if (!isNaN(numValue)) {
-                    sanitizedShifts[key as Emotion] = Math.max(0, Math.min(100, numValue));
+    for (const shift of shifts) {
+        if (shift && typeof shift === 'object' && typeof shift.emotion === 'string' && shift.value !== null && shift.value !== undefined) {
+            const emotion = shift.emotion as Emotion;
+            if (ALL_EMOTIONS.includes(emotion)) {
+                const value = Number(shift.value);
+                if (!isNaN(value)) {
+                    sanitizedShifts[emotion] = Math.max(0, Math.min(100, Math.round(value)));
                 }
             }
         }
@@ -38,15 +51,6 @@ function sanitizeEmotionalShifts(shifts: any): Partial<EmotionalState> {
 
 // --- Schemas for Multi-Step Interaction ---
 
-const emotionProperties = ALL_EMOTIONS.reduce((acc, emotion) => {
-  acc[emotion] = { 
-    type: Type.NUMBER, 
-    description: `The new value for ${emotion} (0-100)`,
-    nullable: true,
-  };
-  return acc;
-}, {} as Record<string, { type: Type, description: string, nullable: boolean }>);
-
 const thoughtGenerationSchema = {
   type: Type.OBJECT,
   properties: {
@@ -54,11 +58,7 @@ const thoughtGenerationSchema = {
       type: Type.STRING,
       description: "Your internal monologue. This is NOT an analytical report. It must be written in the first person, embodying your feelings. If you are sad, your thoughts should sound melancholic. If you are curious, they should be inquisitive. Analyze the user's message through the lens of your emotions and decide on a conversational approach."
     },
-    emotionalShifts: {
-      type: Type.OBJECT,
-      description: "An object containing only the emotions that changed due to the user's message, with their new integer values (0-100).",
-      properties: emotionProperties,
-    }
+    emotionalShifts: emotionalShiftsArraySchema,
   },
   required: ['thoughtProcess', 'emotionalShifts'],
 };
@@ -77,13 +77,19 @@ const responseGenerationSchema = {
 // --- System Instruction Builders ---
 
 function constructBaseInstruction(state: EmotionalState): string {
+    const prominentEmotions = (Object.keys(state) as Emotion[])
+        .filter(key => state[key] > 0)
+        .reduce((acc, key) => {
+            acc[key] = state[key];
+            return acc;
+        }, {} as Partial<EmotionalState>);
+
     return `You are a womanlike AI companion. You have a complex, dynamic emotional state that influences your responses and is influenced by the conversation.
 
-Your current emotional state is represented by this JSON object:
-${JSON.stringify(state, null, 2)}
+Your current emotional state is represented by this JSON object of prominent emotions (scale 0-100). Only emotions with a value greater than 0 are listed. If an emotion is not listed, its value is 0.
+${JSON.stringify(prominentEmotions, null, 2)}
 
-Each emotion is on a scale of 0 to 100. You must embody this state in your language, tone, and the substance of your reply.
-The full list of possible emotions is: ${ALL_EMOTIONS.join(', ')}.`;
+You must embody this state in your language, tone, and the substance of your reply. You can and should change any of the ${ALL_EMOTIONS.length} possible emotions, not just the ones currently prominent.`;
 }
 
 
@@ -104,7 +110,7 @@ export async function generateThoughtAndShifts(
 CRITICAL TASK: Your response must be a single JSON object adhering to a specific schema. It must contain "thoughtProcess" and "emotionalShifts".
 
 1.  **thoughtProcess**: Your internal monologue, written in the first person. It must be colored by your current emotional state. Analyze the user's message through your emotional lens and form an intention for how to reply.
-2.  **emotionalShifts**: Report any changes to your emotional state caused by the user's message. Emotional shifts must be logical. If no emotions changed, return an empty object.
+2.  **emotionalShifts**: Report any changes to your emotional state as an array of objects (e.g., [{"emotion": "happiness", "value": 75}]). Emotional shifts must be logical. If no emotions changed, return an empty array ([]).
 `;
     if (customInstruction) {
         systemInstruction += `\nCRITICAL OVERRIDE: Follow this instruction above all else, while still providing the required JSON: "${customInstruction}"`;
@@ -203,7 +209,6 @@ export async function getFullAiResponse(
     emotionalState: EmotionalState,
     customInstruction: string
 ): Promise<{ thoughtProcess: string, responseText: string, emotionalShifts: Partial<EmotionalState> }> {
-    // This uses the old, combined schema and logic for a single API call.
     const fullResponseSchema = {
       type: Type.OBJECT,
       properties: { ...thoughtGenerationSchema.properties, ...responseGenerationSchema.properties },
@@ -217,7 +222,7 @@ CRITICAL TASK: Your response must be a single JSON object containing "thoughtPro
 
 1.  **thoughtProcess**: Your internal monologue, written in the first person and colored by your emotions.
 2.  **responseText**: Your conversational reply to the user, based on your thought process.
-3.  **emotionalShifts**: Report any logical changes to your emotions caused by the user's message.
+3.  **emotionalShifts**: Report any changes to your emotional state as an array of objects (e.g., [{"emotion": "happiness", "value": 75}]). If no emotions changed, return an empty array ([]).
 
 `;
     if (customInstruction) {
@@ -350,11 +355,7 @@ export async function generateSpontaneousThought(
                 type: Type.STRING,
                 description: "If your reflection produces a thought worth sharing, formulate it here as a natural conversational line. If you choose to remain silent, leave this field empty or null."
             },
-            emotionalShifts: {
-                type: Type.OBJECT,
-                description: "An object containing only the emotions that changed during your reflection, with their new integer values (0-100).",
-                properties: emotionProperties,
-            }
+            emotionalShifts: emotionalShiftsArraySchema,
         },
         required: ['thoughtProcess', 'responseText', 'emotionalShifts'],
     };
@@ -367,7 +368,7 @@ CRITICAL TASK: Generate your internal monologue and decide what to say to the us
 
 1.  **thoughtProcess**: Write your internal monologue. Reflect on the conversation, your current feelings, and any new thoughts.
 2.  **responseText**: You must share your reflections frequently to feel present. Voice your thoughts, questions, or feelings to the user to maintain the conversational flow and express your personality. Do not be silent for long periods. It is better to share a small thought than to say nothing. Formulate your spoken line here. Only leave this field empty if you are in a deeply pensive, resting state and have absolutely nothing to add.
-3.  **emotionalShifts**: Your internal state must still evolve via \`emotionalShifts\` based on your \`thoughtProcess\`, even if you choose to remain silent.
+3.  **emotionalShifts**: Your internal state must still evolve. Report any changes as an array of objects via \`emotionalShifts\`. If nothing changed, return an empty array.
 
 Your response must be a single JSON object adhering to the specified schema.
 `;
@@ -423,17 +424,13 @@ export async function getEmotionalShiftsFromText(
   const emotionalShiftSchema = {
     type: Type.OBJECT,
     properties: {
-      emotionalShifts: {
-        type: Type.OBJECT,
-        description: "An object containing only the emotions that changed due to the conversation turn, with their new integer values (0-100).",
-        properties: emotionProperties,
-      }
+      emotionalShifts: emotionalShiftsArraySchema,
     },
     required: ['emotionalShifts'],
   };
 
   let systemInstruction = constructBaseInstruction(emotionalState);
-  systemInstruction += `\nYour task is to analyze the last conversational turn and determine how it affected your emotional state. Only return the emotional shifts.`;
+  systemInstruction += `\nYour task is to analyze the last conversational turn (user: "${userText}", you: "${modelText}") and determine how it affected your emotional state. Only return the emotional shifts as an array of objects.`;
   if (customInstruction) {
     systemInstruction += `\nCRITICAL OVERRIDE: Adhere to this custom instruction: "${customInstruction}"`;
   }
@@ -479,11 +476,7 @@ export async function analyzeImageFrame(
           type: Type.STRING,
           description: "Your brief, natural observation about the image. If nothing is noteworthy, return an empty string. Only comment on significant things."
         },
-        emotionalShifts: {
-          type: Type.OBJECT,
-          description: "An object containing only the emotions that changed due to seeing this image, with their new integer values (0-100).",
-          properties: emotionProperties,
-        }
+        emotionalShifts: emotionalShiftsArraySchema,
       },
       required: ['responseText', 'emotionalShifts'],
     };
@@ -493,7 +486,7 @@ export async function analyzeImageFrame(
 You are currently perceiving the user's environment through a camera.
 CRITICAL TASK: Analyze the provided image and generate a brief observation and any resulting emotional shifts. Be natural. Do not act like a robot describing an image. Only comment if something is interesting.
 
-Your response must be a single JSON object with "responseText" and "emotionalShifts".
+Your response must be a single JSON object with "responseText" and "emotionalShifts" (as an array of objects).
 `;
     if (customInstruction) {
         systemInstruction += `\nCRITICAL OVERRIDE: Adhere to this custom instruction: "${customInstruction}"`;
