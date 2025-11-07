@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { ChatWindow } from './components/ChatWindow';
@@ -21,7 +22,8 @@ import { GoogleGenAI, Modality, LiveServerMessage } from '@google/genai';
 
 const TRIPOD_OF_SELF_CONFIG: EmotionalState = {
     ...ALL_EMOTIONS.reduce((acc, e) => ({...acc, [e]: 0}), {} as EmotionalState),
-    awareness: 85, understanding: 80, curiosity: 65, confusion: 15,
+    // FIX: Changed 'understanding' to 'selfUnderstanding' to match the EmotionalState type.
+    awareness: 85, selfUnderstanding: 80, curiosity: 65, confusion: 15,
     regret: 20, gratitude: 40, sadness: 25, longing: 30,
     stubbornness: 50, hope: 60, anxiety: 35, pride: 45,
     happiness: 50, shyness: 30, honesty: 80, trust: 55,

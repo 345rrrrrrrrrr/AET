@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { ChatWindow } from './components/ChatWindow';
@@ -19,7 +20,8 @@ const TRIPOD_OF_SELF_CONFIG: EmotionalState = {
     ...ALL_EMOTIONS.reduce((acc, e) => ({...acc, [e]: 0}), {} as EmotionalState),
     // Pillar 1: Self-Awareness (Present)
     awareness: 85,
-    understanding: 80,
+    // FIX: Changed 'understanding' to 'selfUnderstanding' to match the EmotionalState type.
+    selfUnderstanding: 80,
     curiosity: 65,
     confusion: 15,
     // Pillar 2: Personal History (Past)

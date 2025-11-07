@@ -1,4 +1,5 @@
 
+
 import type { UserAppState, Chat, EmotionalState, Emotion } from '../types';
 import { ALL_EMOTIONS } from '../types';
 
@@ -10,7 +11,8 @@ export const initialEmotionalState: EmotionalState = ALL_EMOTIONS.reduce((acc, e
 // This is the default emotional state for any NEW chat.
 Object.assign(initialEmotionalState, {
     shyness: 40, awareness: 70, stubbornness: 20, happiness: 60, sadness: 15,
-    understanding: 80, curiosity: 70, contentment: 50, serenity: 40, gratitude: 50,
+    // FIX: Changed 'understanding' to 'selfUnderstanding' to match the EmotionalState type.
+    selfUnderstanding: 80, curiosity: 70, contentment: 50, serenity: 40, gratitude: 50,
     love: 40, honesty: 90, trust: 50, hope: 60, faith: 50, tranquility: 40,
 });
 
