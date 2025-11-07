@@ -153,19 +153,19 @@ export interface Chat {
   emotionalState: EmotionalState;
 }
 
-export interface UserAppState {
-  customInstruction: string;
-  chats: Chat[];
-  activeChatId: string | null;
+// Fix: Add User and UserData interfaces for authentication.
+export interface User {
+  username: string;
+  role: 'user' | 'admin';
 }
 
-// FIX: Add UserData and User interfaces to resolve import error
 export interface UserData {
   hashedPassword: string;
   role: 'user' | 'admin';
 }
 
-export interface User {
-  username: string;
-  role: 'user' | 'admin';
+export interface UserAppState {
+  customInstruction: string;
+  chats: Chat[];
+  activeChatId: string | null;
 }

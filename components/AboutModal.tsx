@@ -21,7 +21,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ onClose }) => {
             </button>
         </div>
         <p className="text-gray-400 mb-6 text-base">
-          The <span className="font-bold text-purple-300">Artifical Emotion Terminal</span> is a sophisticated interface for interacting with a womanlike AI companion. Her personality is not static; it is a dynamic, complex emotional state that you can observe and influence directly.
+          The <span className="font-bold text-purple-300">Artifical Emotion Terminal</span> is a sophisticated interface for interacting with an emotionally complex AI companion. Her personality is not static; it is a dynamic, complex emotional state that you can observe and influence directly.
         </p>
 
         <div className="space-y-6">
