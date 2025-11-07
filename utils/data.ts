@@ -1,7 +1,8 @@
 
-
-import type { UserAppState, Chat, EmotionalState, Emotion } from '../types';
+import type { UserAppState, Chat, EmotionalState } from '../types';
 import { ALL_EMOTIONS } from '../types';
+
+const APP_STATE_STORAGE_KEY = 'aet_app_state';
 
 export const initialEmotionalState: EmotionalState = ALL_EMOTIONS.reduce((acc, emotion) => {
     acc[emotion] = 0;
@@ -11,7 +12,6 @@ export const initialEmotionalState: EmotionalState = ALL_EMOTIONS.reduce((acc, e
 // This is the default emotional state for any NEW chat.
 Object.assign(initialEmotionalState, {
     shyness: 40, awareness: 70, stubbornness: 20, happiness: 60, sadness: 15,
-    // FIX: Changed 'understanding' to 'selfUnderstanding' to match the EmotionalState type.
     selfUnderstanding: 80, curiosity: 70, contentment: 50, serenity: 40, gratitude: 50,
     love: 40, honesty: 90, trust: 50, hope: 60, faith: 50, tranquility: 40,
 });
@@ -32,49 +32,30 @@ export function createInitialUserData(): UserAppState {
     };
 }
 
-export function loadUserData(username: string): UserAppState {
+export function loadAppState(): UserAppState {
     try {
-        const dataStr = localStorage.getItem(`aet_userdata_${username}`);
+        const dataStr = localStorage.getItem(APP_STATE_STORAGE_KEY);
         if (dataStr) {
             const state = JSON.parse(dataStr);
-            
-            // --- ONE-TIME MIGRATION SCRIPT ---
-            // If `state.emotionalState` exists, it's the old format. We must migrate it.
-            if (state.emotionalState && state.chats && state.chats.length > 0 && !state.chats[0].emotionalState) {
-                console.warn(`MIGRATING user data for ${username} to per-chat emotional state format.`);
-                
-                // Apply the old global emotional state to every existing chat.
-                const migratedChats = state.chats.map((chat: Omit<Chat, 'emotionalState'>) => ({
-                    ...chat,
-                    emotionalState: state.emotionalState 
-                }));
-
-                const migratedState: UserAppState = {
-                    customInstruction: state.customInstruction,
-                    chats: migratedChats,
-                    activeChatId: state.activeChatId,
-                };
-                
-                // Save the migrated data back to localStorage immediately.
-                saveUserData(username, migratedState); 
-                return migratedState;
+            // Basic validation to ensure the loaded data has the expected structure
+            if (state && state.chats && state.activeChatId !== undefined && state.customInstruction !== undefined) {
+                return state;
             }
-            
-            // If the data is already in the new format or is malformed, return it as is.
-            return state;
         }
     } catch (error) {
-        console.error(`Failed to load or parse user data for ${username}`, error);
+        console.error(`Failed to load or parse app state from localStorage`, error);
+        // Clear corrupted data
+        localStorage.removeItem(APP_STATE_STORAGE_KEY);
     }
-    // If no data exists or parsing fails, return a fresh slate for the user.
+    // If no data exists or parsing fails, return a fresh slate.
     return createInitialUserData();
 }
 
-export function saveUserData(username: string, state: UserAppState) {
+export function saveAppState(state: UserAppState) {
     try {
         const data = JSON.stringify(state);
-        localStorage.setItem(`aet_userdata_${username}`, data);
+        localStorage.setItem(APP_STATE_STORAGE_KEY, data);
     } catch (error) {
-        console.error(`Failed to save user data for ${username}`, error);
+        console.error(`Failed to save app state to localStorage`, error);
     }
 }

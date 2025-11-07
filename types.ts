@@ -1,5 +1,3 @@
-
-
 export const ALL_EMOTIONS = [
   'absurdity', 'acceptance', 'admiration', 'adoration', 'aestheticAppreciation', 
   'affection', 'affirmation', 'afraid', 'agitation', 'agony', 'aggressive', 
@@ -124,7 +122,6 @@ export const EMOTION_GROUPS = {
     'selfConfident', 'selfConscious', 'selfCritical', 'selfLoathing', 'selfMotivated', 'selfPity', 
     'shameless', 'shyness', 'smug', 'strong', 'stubborn', 'stubbornness', 'stuck', 'submissive', 
     'suspicious', 'tired', 'tolerance', 'torment', 'uncertainty', 'undermined', 'uneasiness', 
-    // FIX: Removed 'understanding' as it is not a valid Emotion type. 'selfUnderstanding' exists in the 'Positive Core' group.
     'unsure', 'vigilance', 'weak'
   ],
   'Existential & Other': [
@@ -148,16 +145,6 @@ export interface PendingThought {
   emotionalShifts: Partial<EmotionalState>;
 }
 
-export interface User {
-  username: string;
-  role: 'user' | 'admin';
-}
-
-export interface UserData {
-  hashedPassword: string;
-  role: 'user' | 'admin';
-}
-
 export interface Chat {
   id: string;
   name: string;
@@ -170,4 +157,15 @@ export interface UserAppState {
   customInstruction: string;
   chats: Chat[];
   activeChatId: string | null;
+}
+
+// FIX: Add UserData and User interfaces to resolve import error
+export interface UserData {
+  hashedPassword: string;
+  role: 'user' | 'admin';
+}
+
+export interface User {
+  username: string;
+  role: 'user' | 'admin';
 }

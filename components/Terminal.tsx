@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { TerminalLog, User } from '../types';
+import type { TerminalLog } from '../types';
 
 interface TerminalProps {
     logs: TerminalLog[];
@@ -11,10 +11,6 @@ interface TerminalProps {
     size: { width: number; height: number };
     setPosition: (pos: { x: number; y: number }) => void;
     setSize: (size: { width: number; height: number }) => void;
-    currentUser: User | null;
-    onRegister: (username: string, password: string) => Promise<boolean>;
-    onLogin: (username: string, password: string) => Promise<boolean>;
-    addLog: (message: string, type: TerminalLog['type']) => void;
 }
 
 const getLogColor = (type: TerminalLog['type']): string => {
@@ -30,9 +26,7 @@ const getLogColor = (type: TerminalLog['type']): string => {
     }
 }
 
-type AuthMode = 'awaiting_action' | 'awaiting_username' | 'awaiting_password' | 'awaiting_password_confirm';
-
-export const Terminal: React.FC<TerminalProps> = ({ logs, onCommand, history, onClose, position, size, setPosition, setSize, currentUser, onRegister, onLogin, addLog }) => {
+export const Terminal: React.FC<TerminalProps> = ({ logs, onCommand, history, onClose, position, size, setPosition, setSize }) => {
   const [input, setInput] = useState('');
   const [historyIndex, setHistoryIndex] = useState(history.length);
   const endOfLogsRef = useRef<HTMLDivElement>(null);
@@ -45,34 +39,12 @@ export const Terminal: React.FC<TerminalProps> = ({ logs, onCommand, history, on
   const initialPositionRef = useRef({ x: 0, y: 0 });
   const initialSizeRef = useRef({ width: 0, height: 0 });
 
-  const [mode, setMode] = useState<AuthMode>('awaiting_action');
-  const [action, setAction] = useState<'login' | 'register' | null>(null);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-
-  const isPasswordInput = mode === 'awaiting_password' || mode === 'awaiting_password_confirm';
-  const terminalPrompt = currentUser ? `${currentUser.username}$` : '>';
-
-  useEffect(() => {
-    if (!currentUser) {
-        setMode('awaiting_action');
-        setAction(null);
-        setUsername('');
-        setPassword('');
-    }
-  }, [currentUser]);
+  const terminalPrompt = '>';
 
   useEffect(() => {
     setHistoryIndex(history.length);
   }, [history]);
   
-  useEffect(() => {
-    if (!currentUser && logs.length < 3) {
-      addLog("AET Authentication required.", 'system');
-      addLog("Type 'login' or 'register' to begin.", 'info');
-    }
-  }, [currentUser, addLog, logs.length]);
-
   useEffect(() => {
     endOfLogsRef.current?.scrollIntoView({ behavior: 'smooth' });
     inputRef.current?.focus();
@@ -127,105 +99,42 @@ export const Terminal: React.FC<TerminalProps> = ({ logs, onCommand, history, on
       };
   }, [handleMouseMove, handleMouseUp]);
 
-  const resetAuthFlow = useCallback(() => {
-    setMode('awaiting_action');
-    setAction(null);
-    setUsername('');
-    setPassword('');
-    setInput('');
-  }, []);
-
   const handleEnter = useCallback(async () => {
     const command = input.trim();
-    setInput('');
-
-    if (currentUser) {
+    if (command) {
+        setInput('');
         onCommand(command);
-        return;
     }
-    
-    addLog(`${terminalPrompt} ${isPasswordInput ? '********' : command}`, 'command');
-
-    switch (mode) {
-        case 'awaiting_action':
-            if (command.toLowerCase() === 'login') {
-                setAction('login');
-                setMode('awaiting_username');
-                addLog('username:', 'info');
-            } else if (command.toLowerCase() === 'register') {
-                setAction('register');
-                setMode('awaiting_username');
-                addLog('username:', 'info');
-            } else {
-                addLog(`Error: Unknown command. Please type 'login' or 'register'.`, 'error');
-            }
-            break;
-        case 'awaiting_username':
-            setUsername(command);
-            setMode('awaiting_password');
-            addLog('password:', 'info');
-            break;
-        case 'awaiting_password':
-            if (action === 'login') {
-                const success = await onLogin(username, command);
-                if (!success) {
-                    resetAuthFlow();
-                    addLog("Type 'login' or 'register' to begin.", 'info');
-                }
-            } else if (action === 'register') {
-                setPassword(command);
-                setMode('awaiting_password_confirm');
-                addLog('confirm password:', 'info');
-            }
-            break;
-        case 'awaiting_password_confirm':
-            if (command !== password) {
-                addLog('Error: Passwords do not match. Please try again.', 'error');
-                setMode('awaiting_password');
-                addLog('password:', 'info');
-            } else {
-                const success = await onRegister(username, password);
-                if (!success) {
-                    resetAuthFlow();
-                    addLog("Type 'login' or 'register' to begin.", 'info');
-                }
-            }
-            break;
-    }
-  }, [input, currentUser, onCommand, addLog, terminalPrompt, isPasswordInput, mode, action, onLogin, username, onRegister, password, resetAuthFlow]);
+  }, [input, onCommand]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && input.trim()) {
+    if (e.key === 'Enter') {
       handleEnter();
       draftInputRef.current = '';
       return;
     }
 
-    if (currentUser) {
-        if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            if (history.length === 0 || historyIndex <= 0) return;
-            if (historyIndex === history.length) {
-                draftInputRef.current = input;
-            }
-            const newIndex = historyIndex - 1;
-            setHistoryIndex(newIndex);
-            setInput(history[newIndex] || '');
-        } else if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            if (historyIndex >= history.length) return;
-            const newIndex = historyIndex + 1;
-            setHistoryIndex(newIndex);
-            setInput(newIndex === history.length ? draftInputRef.current : (history[newIndex] || ''));
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (history.length === 0 || historyIndex <= 0) return;
+        if (historyIndex === history.length) {
+            draftInputRef.current = input;
         }
+        const newIndex = historyIndex - 1;
+        setHistoryIndex(newIndex);
+        setInput(history[newIndex] || '');
+    } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (historyIndex >= history.length) return;
+        const newIndex = historyIndex + 1;
+        setHistoryIndex(newIndex);
+        setInput(newIndex === history.length ? draftInputRef.current : (history[newIndex] || ''));
     }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value);
-    if(currentUser) {
-        setHistoryIndex(history.length);
-    }
+    setHistoryIndex(history.length);
   };
 
   return (
@@ -256,12 +165,12 @@ export const Terminal: React.FC<TerminalProps> = ({ logs, onCommand, history, on
         <span className="text-green-400 mr-2">{terminalPrompt}</span>
         <input 
           ref={inputRef}
-          type={isPasswordInput ? 'password' : 'text'}
+          type='text'
           value={input}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           className="w-full bg-transparent text-white outline-none"
-          placeholder={currentUser ? "Type a command... (e.g., set happiness 80, help)" : ""}
+          placeholder="Type a command... (e.g., set happiness 80, help)"
           autoComplete="off"
         />
       </div>

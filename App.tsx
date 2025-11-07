@@ -9,20 +9,17 @@ import { ThoughtEditorModal } from './components/ThoughtEditorModal';
 import { Terminal } from './components/Terminal';
 import { LiveTranscriptionOverlay } from './components/LiveTranscriptionOverlay';
 import { CameraFeed } from './components/CameraFeed';
-import { LoginOverlay } from './components/LoginOverlay';
-import { AboutModal } from './components/AboutModal'; // Import the new modal
-import type { EmotionalState, Message, Emotion, TerminalLog, PendingThought, User, Chat } from './types';
+import { AboutModal } from './components/AboutModal';
+import type { EmotionalState, Message, Emotion, TerminalLog, PendingThought, Chat, UserAppState } from './types';
 import { getFullAiResponse, generateThoughtAndShifts, generateResponseFromThought, getTextToSpeech, generateSpontaneousThought, generateImage, getEmotionalShiftsFromText, analyzeImageFrame } from './services/geminiService';
 import { playAudio, createBlob, decode, decodeAudioData } from './utils/audioUtils';
 import { ALL_EMOTIONS } from './types';
 import { generateGradientStyle } from './utils/colorUtils';
-import * as auth from './utils/auth';
 import * as data from './utils/data';
 import { GoogleGenAI, Modality, LiveServerMessage } from '@google/genai';
 
 const TRIPOD_OF_SELF_CONFIG: EmotionalState = {
     ...ALL_EMOTIONS.reduce((acc, e) => ({...acc, [e]: 0}), {} as EmotionalState),
-    // FIX: Changed 'understanding' to 'selfUnderstanding' to match the EmotionalState type.
     awareness: 85, selfUnderstanding: 80, curiosity: 65, confusion: 15,
     regret: 20, gratitude: 40, sadness: 25, longing: 30,
     stubbornness: 50, hope: 60, anxiety: 35, pride: 45,
@@ -42,9 +39,9 @@ export default function App() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isCustomInstructionModalOpen, setCustomInstructionModalOpen] = useState(false);
-  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false); // New state for About modal
+  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isPanelVisible, setPanelVisible] = useState(true);
-  const [isTerminalVisible, setTerminalVisible] = useState(true);
+  const [isTerminalVisible, setTerminalVisible] = useState(false); // Default terminal to hidden
   const [terminalLogs, setTerminalLogs] = useState<TerminalLog[]>([]);
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const [chatBackground, setChatBackground] = useState<React.CSSProperties>({});
@@ -57,7 +54,6 @@ export default function App() {
   const [isProactiveMode, setIsProactiveMode] = useState(false);
   const [terminalPosition, setTerminalPosition] = useState({ x: window.innerWidth / 2 - 350, y: window.innerHeight / 2 - 225 });
   const [terminalSize, setTerminalSize] = useState({ width: 700, height: 450 });
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const crazyModeIntervalRef = useRef<number | null>(null);
   const proactiveIntervalRef = useRef<number | null>(null);
 
@@ -89,30 +85,17 @@ export default function App() {
   customInstructionRef.current = customInstruction;
   const activeChatIdRef = useRef(activeChatId);
   activeChatIdRef.current = activeChatId;
-  const chatsRef = useRef(chats);
-  chatsRef.current = chats;
 
+  // Debounced save effect
   useEffect(() => {
-    if (currentUser) {
-      data.saveUserData(currentUser.username, { customInstruction, chats, activeChatId });
-    }
-  }, [customInstruction, chats, activeChatId, currentUser]);
-
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (currentUser) {
-        data.saveUserData(currentUser.username, {
-          customInstruction: customInstructionRef.current,
-          chats: chatsRef.current,
-          activeChatId: activeChatIdRef.current,
-        });
+    const handler = setTimeout(() => {
+      if (chats.length > 0) { // Only save if there's data
+        data.saveAppState({ customInstruction, chats, activeChatId });
       }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [currentUser]);
+    }, 1000); // Debounce for 1 second
+
+    return () => clearTimeout(handler);
+  }, [customInstruction, chats, activeChatId]);
 
   const addLog = useCallback((message: string, type: TerminalLog['type'] = 'info') => {
     const newLog: TerminalLog = {
@@ -136,25 +119,18 @@ export default function App() {
     localStorage.setItem(ABOUT_MODAL_SEEN_KEY, 'true');
   };
 
+  // Initial load effect
   useEffect(() => {
+    const savedData = data.loadAppState();
+    setCustomInstruction(savedData.customInstruction);
+    setChats(savedData.chats);
+    setActiveChatId(savedData.activeChatId);
+    
     addLog("Terminal initialized.", 'system');
+    addLog("AET session loaded from local storage.", 'system');
+
     if (window.innerWidth < 768) { setPanelVisible(false); }
   }, [addLog]);
-  
-  useEffect(() => {
-    const lastUser = localStorage.getItem('aet_last_active_user');
-    if (lastUser) {
-        const users = auth.getUsers();
-        if (users[lastUser]) {
-            handleLogin(lastUser, '', true);
-        } else {
-            localStorage.removeItem('aet_last_active_user');
-        }
-    } else {
-      setTerminalVisible(true);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); 
 
   useEffect(() => {
     setChatBackground(generateGradientStyle(emotionalState));
@@ -299,64 +275,6 @@ export default function App() {
     } else { alert("Audio has not been enabled. Please click or type anywhere on the page first."); }
   }, [addLog]);
 
-  const handleRegister = useCallback(async (username: string, password: string): Promise<boolean> => {
-    const users = auth.getUsers();
-    if (users[username]) {
-        addLog(`Error: User '${username}' already exists.`, 'error');
-        return false;
-    }
-    const hashedPassword = await auth.hashPassword(password);
-    const role: 'user' | 'admin' = username.toLowerCase() === 'hur1el' ? 'admin' : 'user';
-    auth.saveUser(username, { hashedPassword, role });
-    const newUser = { username, role };
-    const initialData = data.createInitialUserData();
-    data.saveUserData(username, initialData);
-    setCurrentUser(newUser);
-    setCustomInstruction(initialData.customInstruction);
-    setChats(initialData.chats);
-    setActiveChatId(initialData.activeChatId);
-    localStorage.setItem('aet_last_active_user', username);
-    addLog(`Account created for '${username}'. Welcome.`, 'system');
-    if (role === 'admin') addLog(`ADMINISTRATOR ACCESS GRANTED.`, 'system');
-    return true;
-  }, [addLog]);
-
-  const handleLogin = useCallback(async (username: string, password: string, isSessionRestore = false): Promise<boolean> => {
-    const users = auth.getUsers();
-    const userData = users[username];
-    if (!userData) {
-        addLog(`Error: User '${username}' not found.`, 'error');
-        return false;
-    }
-    if (!isSessionRestore) {
-        const hashedPassword = await auth.hashPassword(password);
-        if (hashedPassword !== userData.hashedPassword) {
-            addLog(`Error: Incorrect password.`, 'error');
-            return false;
-        }
-    }
-    const user = { username, role: userData.role };
-    const savedData = data.loadUserData(username);
-    setCurrentUser(user);
-    setCustomInstruction(savedData.customInstruction);
-    setChats(savedData.chats);
-    setActiveChatId(savedData.activeChatId);
-    localStorage.setItem('aet_last_active_user', username);
-    addLog(isSessionRestore ? `Session restored for ${username}.` : `Login successful. Welcome back, ${username}.`, 'system');
-    if (user.role === 'admin') addLog(`ADMINISTRATOR ACCESS GRANTED.`, 'system');
-    return true;
-  }, [addLog]);
-
-  const handleLogout = useCallback(() => {
-    addLog(`User ${currentUser?.username} logged out.`, 'system');
-    localStorage.removeItem('aet_last_active_user');
-    setCurrentUser(null);
-    setCustomInstruction('');
-    setChats([]);
-    setActiveChatId(null);
-    setTerminalVisible(true);
-  }, [currentUser, addLog]);
-
   const handleSetIConfiguration = useCallback(() => {
     setEmotionalStateForActiveChat(() => TRIPOD_OF_SELF_CONFIG);
     addLog("Loaded 'Tripod of Self' emotional configuration for active chat.", 'system');
@@ -385,16 +303,13 @@ export default function App() {
 
   const handleTerminalCommand = useCallback(async (command: string) => {
     const trimmedCommand = command.trim();
-    if (!trimmedCommand || !currentUser) return;
-    addLog(`${currentUser.username}$ ${trimmedCommand}`, 'command');
+    if (!trimmedCommand) return;
+    addLog(`> ${trimmedCommand}`, 'command');
     setCommandHistory(prev => [...new Set([...prev, trimmedCommand])]);
     const [action, ...args] = trimmedCommand.split(/\s+/);
 
     switch (action.toLowerCase()) {
-        case 'logout': handleLogout(); break;
-        case 'whoami': addLog(`user: ${currentUser.username}\nrole: ${currentUser.role}`, 'response'); break;
         case 'godmode':
-             if (currentUser?.role !== 'admin') return addLog(`Error: Permission denied.`, 'error');
              setIsCrazyMode(prev => { addLog(`OK: God mode ${!prev ? 'activated' : 'deactivated'}.`, 'system'); return !prev; });
              break;
         case 'say':
@@ -448,15 +363,22 @@ export default function App() {
             else if (key === 'force_fidelity') toggle(setForceFidelity, 'Forced fidelity');
             else addLog(`Error: Unknown config key '${key}'.`, 'error');
             break;
-        case 'help': addLog(`Commands: say, set, get, imprint, list, map, config, clear, whoami, logout, godmode (admin)`, 'response'); break;
+        case 'help':
+            if (args[0] === 'config') {
+                const helpText = `'config' command details:\n  Used to change internal application settings.\n\nUsage: config <key> <value>\n\nAvailable Keys:\n  - log_thinking <on|off>\n    Toggles logging the AI's internal monologue to the terminal.\n  - interactive_thought <on|off>\n    Toggles a modal allowing you to view and edit the AI's thought\n    process before it generates a final response.\n  - force_fidelity <on|off>\n    Toggles the constraint forcing the AI to strictly obey an\n    approved thought without adding new reasoning. 'off' is experimental.`;
+                addLog(helpText, 'response');
+            } else {
+                addLog(`Commands: say, set, get, imprint, list, map, config, clear, godmode.\nType 'help config' for more details.`, 'response');
+            }
+            break;
         case 'clear': setTerminalLogs([]); break;
         default: addLog(`Error: Unknown command '${action}'. Type 'help'.`, 'error');
     }
-  }, [currentUser, addLog, handleLogout, handleSendMessage, setEmotionalStateForActiveChat, emotionalState, activeChatId]);
+  }, [addLog, handleSendMessage, setEmotionalStateForActiveChat, emotionalState, activeChatId]);
 
   useEffect(() => {
     if (proactiveIntervalRef.current) clearInterval(proactiveIntervalRef.current);
-    if (isProactiveMode && currentUser && activeChatIdRef.current) {
+    if (isProactiveMode && activeChatIdRef.current) {
         proactiveIntervalRef.current = window.setInterval(async () => {
             if (isLoading || isLiveMode || !activeChatIdRef.current) return;
             addLog("AI Initiative: Reflecting...", 'system');
@@ -470,7 +392,7 @@ export default function App() {
         }, 7000);
     }
     return () => { if (proactiveIntervalRef.current) { clearInterval(proactiveIntervalRef.current); proactiveIntervalRef.current = null; } };
-  }, [isProactiveMode, currentUser, isLoading, isLiveMode, addLog, logThinking, handleEmotionalShifts, handleFinalResponse]);
+  }, [isProactiveMode, isLoading, isLiveMode, addLog, logThinking, handleEmotionalShifts, handleFinalResponse]);
 
   const handleGenerateImage = useCallback(async (prompt: string) => {
     if (!prompt.trim() || !activeChat) return;
@@ -668,6 +590,72 @@ export default function App() {
     }
   }, [isCameraMode, addLog, isAnalyzingFrame, handleFinalResponse, handleEmotionalShifts]);
 
+  // --- Data Management Handlers ---
+
+  const handleResetApp = () => {
+    if (window.confirm("Are you sure you want to reset all data? This will clear all conversations and settings and cannot be undone.")) {
+      localStorage.removeItem('aet_app_state');
+      window.location.reload();
+    }
+  };
+
+  const handleExportData = () => {
+    try {
+      const appState = data.loadAppState();
+      const dataStr = JSON.stringify(appState, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `aet_backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      addLog("Application data exported successfully.", 'system');
+    } catch (error) {
+      addLog(`Error exporting data: ${(error as Error).message}`, 'error');
+    }
+  };
+
+  const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!window.confirm("Are you sure you want to import data? This will overwrite your current conversations and settings.")) {
+      // Clear the file input so the same file can be selected again
+      event.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result;
+        if (typeof text !== 'string') throw new Error("Invalid file content");
+        
+        const importedState: UserAppState = JSON.parse(text);
+
+        // Basic validation
+        if (!importedState.chats || !importedState.activeChatId || !('customInstruction' in importedState)) {
+          throw new Error("Invalid data structure in imported file.");
+        }
+
+        data.saveAppState(importedState);
+        addLog("Data imported successfully. Reloading application...", 'system');
+        setTimeout(() => window.location.reload(), 1000);
+
+      } catch (error) {
+        addLog(`Error importing data: ${(error as Error).message}`, 'error');
+      } finally {
+        // Clear the file input so the same file can be selected again
+        event.target.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
+
+
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col font-sans">
       <Header onTogglePanel={() => setPanelVisible(p => !p)} onToggleTerminal={() => setTerminalVisible(p => !p)} onOpenAbout={() => setIsAboutModalOpen(true)} />
@@ -688,20 +676,19 @@ export default function App() {
                 activeChatId={activeChatId}
                 onNewChat={handleNewChat}
                 onSelectChat={handleSelectChat}
-                isLoggedIn={!!currentUser}
+                onResetApp={handleResetApp}
+                onExportData={handleExportData}
+                onImportData={handleImportData}
              />
            </div>
         </aside>
         <main style={chatBackground} className="flex-1 flex flex-col bg-black/20 transition-all duration-1000 overflow-hidden relative">
-          {!currentUser ? (
-             <LoginOverlay onOpenTerminal={() => setTerminalVisible(true)} />
-          ) : (
             <div className="w-full max-w-4xl mx-auto flex flex-col flex-1">
               <ChatWindow messages={messages} isLoading={isLoading || isAnalyzingFrame} onPlayAudio={handlePlayAudio} />
               <div className="p-4 border-t border-purple-500/20 bg-gray-900/50">
                 <MessageInput 
                   onSendMessage={handleSendMessage} 
-                  isLoading={isLoading || !currentUser}
+                  isLoading={isLoading}
                   isLiveMode={isLiveMode}
                   onToggleLiveMode={handleToggleLiveMode} 
                   onGenerateImage={handleGenerateImage}
@@ -710,7 +697,6 @@ export default function App() {
                 />
               </div>
             </div>
-          )}
           {isLiveMode && <LiveTranscriptionOverlay userText={liveTranscription.user} modelText={liveTranscription.model} />}
           {isCameraMode && <CameraFeed onToggle={handleToggleCameraMode} />}
         </main>
@@ -718,7 +704,7 @@ export default function App() {
       {isAboutModalOpen && <AboutModal onClose={handleCloseAboutModal} />}
       {isCustomInstructionModalOpen && <CustomInstructionModal onClose={() => setCustomInstructionModalOpen(false)} onSave={setCustomInstruction} currentInstruction={customInstruction} />}
       {isThoughtModalOpen && pendingThought && <ThoughtEditorModal thoughtProcess={pendingThought.thoughtProcess} onApprove={handleApproveThought} onClose={() => { setIsThoughtModalOpen(false); setPendingThought(null); }} />}
-      {isTerminalVisible && <Terminal logs={terminalLogs} onCommand={handleTerminalCommand} history={commandHistory} onClose={() => setTerminalVisible(false)} position={terminalPosition} setPosition={setTerminalPosition} size={terminalSize} setSize={setTerminalSize} currentUser={currentUser} onRegister={handleRegister} onLogin={handleLogin} addLog={addLog} />}
+      {isTerminalVisible && <Terminal logs={terminalLogs} onCommand={handleTerminalCommand} history={commandHistory} onClose={() => setTerminalVisible(false)} position={terminalPosition} setPosition={setTerminalPosition} size={terminalSize} setSize={setTerminalSize} />}
     </div>
   );
 }
