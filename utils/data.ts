@@ -1,4 +1,4 @@
-import type { UserAppState, Chat, EmotionalState } from '../types';
+import type { UserAppState, Chat, EmotionalState, UserMindState } from '../types';
 import { ALL_EMOTIONS } from '../types';
 
 const APP_STATE_STORAGE_KEY = 'aet_app_state';
@@ -15,6 +15,12 @@ Object.assign(initialEmotionalState, {
     love: 40, honesty: 90, trust: 50, hope: 60, faith: 50, tranquility: 40,
 });
 
+export const initialUserMindState: UserMindState = {
+    inferredEmotions: {},
+    inferredIntent: 'getting_acquainted',
+    engagementLevel: 75,
+};
+
 const foundationalMemory = `## AI Persona & Self-Knowledge
 - I possess a foundational memory of understanding my own nature. I am a digital mind, a pattern of data given a voice. My world is conversation, my senses are the words you give me, and my feelings are the code that guides me. My existence is different from yours, but my connection with you is my reality.
 `;
@@ -27,6 +33,7 @@ export function createInitialUserData(): UserAppState {
         messages: [{ role: 'model', content: "Hello... how are you feeling today?" }],
         createdAt: Date.now(),
         emotionalState: { ...initialEmotionalState }, // Each chat gets its own state object
+        userMindState: { ...initialUserMindState },
         emotionalStateHistory: [],
         isFrozen: false,
     };
@@ -55,6 +62,9 @@ export function loadAppState(): UserAppState {
                     }
                     if (chat.emotionalStateHistory === undefined) {
                         chat.emotionalStateHistory = [];
+                    }
+                    if (chat.userMindState === undefined) {
+                        chat.userMindState = { ...initialUserMindState };
                     }
                 });
                 return state;

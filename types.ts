@@ -143,6 +143,13 @@ export interface TerminalLog {
 export interface PendingThought {
   thoughtProcess: string;
   emotionalShifts: Partial<EmotionalState>;
+  updatedUserMindState?: UserMindState;
+}
+
+export interface UserMindState {
+  inferredEmotions: Partial<EmotionalState>;
+  inferredIntent: string;
+  engagementLevel: number; // 0-100
 }
 
 export interface Chat {
@@ -151,6 +158,7 @@ export interface Chat {
   messages: Message[];
   createdAt: number;
   emotionalState: EmotionalState;
+  userMindState: UserMindState;
   emotionalStateHistory?: EmotionalState[];
   isFrozen?: boolean;
 }

@@ -1,10 +1,11 @@
 import React, { useState, useRef, useMemo } from 'react';
-import type { EmotionalState, Emotion, EmotionGroup, Chat } from '../types';
+import type { EmotionalState, Emotion, EmotionGroup, Chat, UserMindState } from '../types';
 import { EMOTION_GROUPS } from '../types';
 import { EMOTION_COLORS, adjustColor } from '../utils/colorUtils';
 
 interface ControlPanelProps {
   emotionalState: EmotionalState;
+  userMindState: UserMindState;
   setEmotionalState: React.Dispatch<React.SetStateAction<EmotionalState>>;
   onCustomInstructionClick: () => void;
   onSetIConfiguration: () => void;
@@ -77,7 +78,7 @@ const Slider: React.FC<{
 
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({ 
-    emotionalState, setEmotionalState, onCustomInstructionClick, onSetIConfiguration, 
+    emotionalState, userMindState, setEmotionalState, onCustomInstructionClick, onSetIConfiguration, 
     onClearAllEmotions, isCrazyMode, onToggleCrazyMode, isProactiveMode, onToggleProactiveMode,
     chats, activeChatId, onNewChat, onSelectChat, onResetApp, onExportData, onImportData,
     isLoading, onImprintPersona, coreMemory, onConsolidateMemories, isConsolidating,
@@ -155,6 +156,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     setPersonaInput('');
   };
 
+  const prominentUserEmotions = Object.entries(userMindState.inferredEmotions)
+    .sort(([, a], [, b]) => (b as number) - (a as number))
+    .slice(0, 3);
+
   return (
     <div className="p-4 bg-gray-800/50 rounded-lg border border-purple-500/20 h-full min-w-[280px]">
       <style>{`
@@ -197,12 +202,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           </div>
       </div>
 
-      <div className="mb-6 pb-4 border-t border-purple-500/30">
+      <div className="mb-4 pb-4 border-b border-purple-500/30">
         <h2 className="text-xl font-bold mb-3 text-purple-400 text-center">Core Memory</h2>
-        <p className="text-xs text-gray-500 text-center mb-2">A consolidated summary of all conversations.</p>
         <textarea
             readOnly
-            value={coreMemory || "No consolidated memories yet. Start talking to build them."}
+            value={coreMemory || "No consolidated memories yet."}
             className="w-full h-24 p-2 bg-gray-900/50 border border-gray-600 rounded-md text-gray-300 text-xs font-mono resize-none"
         />
         <button
@@ -213,6 +217,28 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             {isConsolidating ? 'Consolidating...' : 'Consolidate Memories'}
         </button>
       </div>
+      
+      <div className="mb-4 pb-4 border-b border-purple-500/30">
+        <h2 className="text-xl font-bold mb-3 text-cyan-400 text-center">Inferred User State</h2>
+        <div className="text-sm space-y-2 text-gray-300 font-mono p-2 bg-gray-900/50 rounded-md">
+            <div className="flex justify-between"><span>Intent:</span> <span className="text-cyan-300">{userMindState.inferredIntent}</span></div>
+            <div className="flex justify-between"><span>Engagement:</span> <span className="text-cyan-300">{userMindState.engagementLevel}%</span></div>
+            <div>
+                <span>Emotions:</span>
+                {prominentUserEmotions.length > 0 ? (
+                    prominentUserEmotions.map(([emo, val]) => (
+                        <div key={emo} className="ml-4 flex justify-between text-xs">
+                            <span className="capitalize">{emo}</span>
+                            <span className="text-cyan-300">{val as number}</span>
+                        </div>
+                    ))
+                ) : (
+                    <span className="text-gray-500 ml-2">None detected</span>
+                )}
+            </div>
+        </div>
+      </div>
+
 
       <h2 className="text-xl font-bold mb-4 text-purple-400 text-center">Emotional Matrix</h2>
        <div className="mb-4 relative">
@@ -231,53 +257,16 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
        </div>
 
        <div className="space-y-2 mb-6">
-         <button
-            onClick={onSetIConfiguration}
-            className="w-full py-2 px-4 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700 transition-colors duration-300 shadow-lg shadow-blue-500/20 text-sm"
-          >
-            Set "I" Configuration
-          </button>
-          <button
-            onClick={onTriggerSelfReflection}
-            className="w-full py-2 px-4 bg-teal-600 text-white font-bold rounded-md hover:bg-teal-700 transition-colors duration-300 shadow-lg shadow-teal-500/20 text-sm"
-          >
-            Trigger Self-Reflection
-          </button>
-          <button
-            onClick={onClearAllEmotions}
-            className="w-full py-2 px-4 bg-gray-700 text-white font-bold rounded-md hover:bg-gray-800 transition-colors duration-300 shadow-lg shadow-gray-900/20 text-sm"
-          >
-            Clear All Emotions
-          </button>
-          <button
-            onClick={onToggleProactiveMode}
-            className={`w-full py-2 px-4 font-bold rounded-md transition-all duration-300 shadow-lg text-sm ${
-              isProactiveMode
-                ? 'bg-cyan-600 text-white shadow-cyan-500/30 hover:bg-cyan-700'
-                : 'bg-gray-600 text-gray-200 shadow-gray-700/30 hover:bg-gray-700'
-            }`}
-          >
+         <button onClick={onSetIConfiguration} className="w-full py-2 px-4 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700 transition-colors duration-300 shadow-lg shadow-blue-500/20 text-sm">Set "I" Configuration</button>
+          <button onClick={onTriggerSelfReflection} className="w-full py-2 px-4 bg-teal-600 text-white font-bold rounded-md hover:bg-teal-700 transition-colors duration-300 shadow-lg shadow-teal-500/20 text-sm">Trigger Self-Reflection</button>
+          <button onClick={onClearAllEmotions} className="w-full py-2 px-4 bg-gray-700 text-white font-bold rounded-md hover:bg-gray-800 transition-colors duration-300 shadow-lg shadow-gray-900/20 text-sm">Clear All Emotions</button>
+          <button onClick={onToggleProactiveMode} className={`w-full py-2 px-4 font-bold rounded-md transition-all duration-300 shadow-lg text-sm ${isProactiveMode ? 'bg-cyan-600 text-white shadow-cyan-500/30 hover:bg-cyan-700' : 'bg-gray-600 text-gray-200 shadow-gray-700/30 hover:bg-gray-700'}`}>
             {isProactiveMode ? 'Deactivate AI Initiative' : 'Activate AI Initiative'}
           </button>
-          <button
-            onClick={onToggleCrazyMode}
-            className={`w-full py-2 px-4 font-bold rounded-md transition-all duration-300 shadow-lg text-sm ${
-              isCrazyMode 
-                ? 'bg-red-700 text-white shadow-red-500/30 hover:bg-red-800 animate-pulse' 
-                : 'bg-gray-600 text-gray-200 shadow-gray-700/30 hover:bg-gray-700'
-            }`}
-          >
+          <button onClick={onToggleCrazyMode} className={`w-full py-2 px-4 font-bold rounded-md transition-all duration-300 shadow-lg text-sm ${isCrazyMode ? 'bg-red-700 text-white shadow-red-500/30 hover:bg-red-800 animate-pulse' : 'bg-gray-600 text-gray-200 shadow-gray-700/30 hover:bg-gray-700'}`}>
             {isCrazyMode ? 'Deactivate Crazy Mode' : 'Activate Crazy Mode'}
           </button>
-          <button
-            onClick={onToggleFreeze}
-            disabled={!activeChatId}
-            className={`w-full py-2 px-4 font-bold rounded-md transition-all duration-300 shadow-lg text-sm ${
-              isFrozen
-                ? 'bg-sky-600 text-white shadow-sky-500/30 hover:bg-sky-700'
-                : 'bg-gray-600 text-gray-200 shadow-gray-700/30 hover:bg-gray-700'
-            }`}
-          >
+          <button onClick={onToggleFreeze} disabled={!activeChatId} className={`w-full py-2 px-4 font-bold rounded-md transition-all duration-300 shadow-lg text-sm ${isFrozen ? 'bg-sky-600 text-white shadow-sky-500/30 hover:bg-sky-700' : 'bg-gray-600 text-gray-200 shadow-gray-700/30 hover:bg-gray-700'}`}>
             {isFrozen ? 'Unfreeze Emotions' : 'Freeze Emotions'}
           </button>
        </div>
@@ -285,10 +274,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       {Object.entries(filteredEmotionGroups).map(([groupName, emotions]) => (
         <div key={groupName} className="mb-4 border-b border-purple-500/10">
           <div className="w-full text-left p-2 rounded-md flex justify-between items-center hover:bg-purple-500/10">
-            <button 
-              onClick={() => toggleGroup(groupName)} 
-              className="flex items-center flex-grow text-purple-300"
-            >
+            <button onClick={() => toggleGroup(groupName)} className="flex items-center flex-grow text-purple-300">
               <span className="font-semibold">{groupName}</span>
               <span className={`transition-transform duration-200 ml-2 ${openGroups[groupName] ? 'rotate-180' : ''}`}>▼</span>
             </button>
@@ -300,7 +286,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           </div>
 
           <div className={`overflow-hidden transition-all duration-300 ease-in-out ${openGroups[groupName] ? 'max-h-[1000px] py-2' : 'max-h-0'}`}>
-{/* Fix: Added type assertion to cast `emotions` to `readonly Emotion[]`, resolving an error where `map` was not found on type `unknown`. */}
              {(emotions as readonly Emotion[]).map(key => (
               <Slider
                 key={key}
@@ -318,10 +303,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           <div className="text-center text-gray-500 py-4">No emotions found matching "{searchTerm}".</div>
       )}
 
-      <button
-        onClick={onCustomInstructionClick}
-        className="w-full mt-6 py-2 px-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-md hover:from-purple-700 hover:to-pink-700 transition-all duration-300 shadow-lg shadow-purple-500/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-white"
-      >
+      <button onClick={onCustomInstructionClick} className="w-full mt-6 py-2 px-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-md hover:from-purple-700 hover:to-pink-700 transition-all duration-300 shadow-lg shadow-purple-500/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-white">
         Custom Instructions
       </button>
 
@@ -329,19 +311,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         <h2 className="text-xl font-bold mb-3 text-purple-400 text-center">Persona Imprinting</h2>
         <p className="text-xs text-gray-500 text-center mb-4">Enter a character's name to analyze their personality from the web and set the emotional matrix.</p>
         <div className="flex space-x-2">
-          <input
-            type="text"
-            value={personaInput}
-            onChange={(e) => setPersonaInput(e.target.value)}
-            placeholder="e.g., Walter White, Sherlock Holmes"
-            disabled={isLoading || isConsolidating}
-            className="flex-1 p-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-gray-400 text-sm disabled:opacity-50"
-          />
-          <button
-            onClick={handleImprintClick}
-            disabled={isLoading || isConsolidating || !personaInput.trim()}
-            className="py-2 px-4 bg-indigo-600 text-white font-bold rounded-md hover:bg-indigo-700 transition-colors duration-300 shadow-lg shadow-indigo-500/20 text-sm disabled:opacity-50 disabled:cursor-wait"
-          >
+          <input type="text" value={personaInput} onChange={(e) => setPersonaInput(e.target.value)} placeholder="e.g., Walter White, Sherlock Holmes" disabled={isLoading || isConsolidating} className="flex-1 p-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-gray-400 text-sm disabled:opacity-50" />
+          <button onClick={handleImprintClick} disabled={isLoading || isConsolidating || !personaInput.trim()} className="py-2 px-4 bg-indigo-600 text-white font-bold rounded-md hover:bg-indigo-700 transition-colors duration-300 shadow-lg shadow-indigo-500/20 text-sm disabled:opacity-50 disabled:cursor-wait">
             {isLoading ? 'Analyzing...' : 'Imprint'}
           </button>
         </div>
