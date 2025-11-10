@@ -61,7 +61,7 @@ export type Emotion = typeof ALL_EMOTIONS[number];
 export type EmotionalState = Record<Emotion, number>;
 
 export interface Message {
-  role: 'user' | 'model';
+  role: 'user' | 'model' | 'narration';
   content: string;
   hidden?: boolean;
   imageUrl?: string;
@@ -151,21 +151,66 @@ export interface Chat {
   messages: Message[];
   createdAt: number;
   emotionalState: EmotionalState;
-}
-
-// Fix: Add User and UserData interfaces for authentication.
-export interface User {
-  username: string;
-  role: 'user' | 'admin';
-}
-
-export interface UserData {
-  hashedPassword: string;
-  role: 'user' | 'admin';
+  emotionalStateHistory?: EmotionalState[];
+  isFrozen?: boolean;
 }
 
 export interface UserAppState {
   customInstruction: string;
   chats: Chat[];
   activeChatId: string | null;
+  coreMemory: string;
+}
+
+// Fix: Added UserData interface to define the shape of user data for authentication, resolving the import error.
+export interface UserData {
+  hashedPassword: string;
+  role: 'user' | 'admin';
+}
+
+// Fix: Added User interface, which is used in several components for managing the logged-in user's state.
+export interface User {
+  username: string;
+  role: 'user' | 'admin';
+}
+
+
+// --- Simulation Types ---
+export type AgentAction = 'idle' | 'moving_to' | 'gathering_wood' | 'drinking_water' | 'eating_food' | 'observing';
+
+export interface AgentState {
+  x: number;
+  y: number;
+  health: number; // 0-100
+  hunger: number; // 0-100 (100 is full)
+  energy: number; // 0-100
+  currentAction: AgentAction;
+  actionTargetId: string | null;
+  actionProgress: number; // 0-100
+  inventory: {
+    wood: number;
+    food: number;
+  };
+  hasAxe: boolean;
+  goal: AgentAction | null;
+  goalTargetId: string | null;
+}
+
+export type WorldObjectType = 'tree' | 'water_source' | 'food_bush' | 'sheep' | 'cow';
+
+export interface WorldObject {
+  id: string;
+  type: WorldObjectType;
+  x: number;
+  y: number;
+  resources: number;
+}
+
+export interface SimulationState {
+  timeOfDay: number; // 0-24 (hours)
+  day: number;
+  weather: 'clear' | 'rain';
+  agent: AgentState;
+  objects: WorldObject[];
+  worldSize: { width: number, height: number };
 }

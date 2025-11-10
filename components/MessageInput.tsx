@@ -42,6 +42,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           placeholder={
+            isLoading ? "Processing..." :
             isLiveMode ? "Live mode is active..." : 
             isCameraMode ? "Visual Cortex is active..." : 
             "Say something or describe an image..."

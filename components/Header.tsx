@@ -1,17 +1,19 @@
 import React from 'react';
 import { SettingsIcon } from './icons/SettingsIcon';
 import { TerminalIcon } from './icons/TerminalIcon';
-import { InfoIcon } from './icons/InfoIcon'; // Import the new icon
+import { InfoIcon } from './icons/InfoIcon'; 
+import { BrainIcon } from './icons/BrainIcon';
 
 interface HeaderProps {
     onTogglePanel: () => void;
     onToggleTerminal: () => void;
-    onOpenAbout: () => void; // Add a new prop to handle opening the About modal
+    onOpenAbout: () => void;
+    onStartSimulation: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onTogglePanel, onToggleTerminal, onOpenAbout }) => {
+export const Header: React.FC<HeaderProps> = ({ onTogglePanel, onToggleTerminal, onOpenAbout, onStartSimulation }) => {
   return (
-    <header className="p-4 border-b border-purple-500/30 shadow-lg shadow-purple-900/50 bg-black/30 flex items-center justify-between">
+    <header className="p-4 border-b border-purple-500/30 shadow-lg shadow-purple-900/50 bg-black/30 flex items-center justify-between z-10">
       {/* Left Group: Action Buttons */}
       <div className="flex items-center gap-2">
         <button 
@@ -27,6 +29,14 @@ export const Header: React.FC<HeaderProps> = ({ onTogglePanel, onToggleTerminal,
           aria-label="Toggle command terminal"
         >
           <TerminalIcon className="w-6 h-6" />
+        </button>
+        <button
+            onClick={onStartSimulation}
+            className="p-2 rounded-full text-cyan-400 hover:bg-cyan-500/20 hover:text-white transition-colors"
+            aria-label="Start AI Simulation"
+            title="Start AI Simulation"
+        >
+            <BrainIcon className="w-6 h-6" />
         </button>
         <button 
           onClick={onOpenAbout} 
@@ -53,7 +63,10 @@ export const Header: React.FC<HeaderProps> = ({ onTogglePanel, onToggleTerminal,
         <div className="p-2 rounded-full">
           <TerminalIcon className="w-6 h-6" />
         </div>
-         <div className="p-2 rounded-full">
+        <div className="p-2 rounded-full">
+          <BrainIcon className="w-6 h-6" />
+        </div>
+        <div className="p-2 rounded-full">
           <InfoIcon className="w-6 h-6" />
         </div>
       </div>

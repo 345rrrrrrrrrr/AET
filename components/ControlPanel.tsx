@@ -1,5 +1,6 @@
 
-import React, { useState, useRef } from 'react';
+
+import React, { useState, useRef, useMemo } from 'react';
 import type { EmotionalState, Emotion, EmotionGroup, Chat } from '../types';
 import { EMOTION_GROUPS } from '../types';
 import { EMOTION_COLORS, adjustColor } from '../utils/colorUtils';
@@ -21,6 +22,13 @@ interface ControlPanelProps {
   onResetApp: () => void;
   onExportData: () => void;
   onImportData: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  isLoading: boolean;
+  onImprintPersona: (personaName: string) => void;
+  coreMemory: string;
+  onConsolidateMemories: () => void;
+  isConsolidating: boolean;
+  isFrozen: boolean;
+  onToggleFreeze: () => void;
 }
 
 const Slider: React.FC<{
@@ -72,7 +80,9 @@ const Slider: React.FC<{
 export const ControlPanel: React.FC<ControlPanelProps> = ({ 
     emotionalState, setEmotionalState, onCustomInstructionClick, onSetIConfiguration, 
     onClearAllEmotions, isCrazyMode, onToggleCrazyMode, isProactiveMode, onToggleProactiveMode,
-    chats, activeChatId, onNewChat, onSelectChat, onResetApp, onExportData, onImportData
+    chats, activeChatId, onNewChat, onSelectChat, onResetApp, onExportData, onImportData,
+    isLoading, onImprintPersona, coreMemory, onConsolidateMemories, isConsolidating,
+    isFrozen, onToggleFreeze
 }) => {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initialState: Record<string, boolean> = {};
@@ -80,6 +90,31 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     return initialState;
   });
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [personaInput, setPersonaInput] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredEmotionGroups = useMemo<Record<string, readonly Emotion[]>>(() => {
+    if (!searchTerm.trim()) {
+      return EMOTION_GROUPS;
+    }
+
+    const lowercasedFilter = searchTerm.toLowerCase();
+    const filteredGroups: Record<string, readonly Emotion[]> = {};
+
+    for (const groupName in EMOTION_GROUPS) {
+      if (Object.prototype.hasOwnProperty.call(EMOTION_GROUPS, groupName)) {
+        const groupEmotions = EMOTION_GROUPS[groupName as EmotionGroup];
+        const matchingEmotions = groupEmotions.filter(emotion =>
+          emotion.toLowerCase().includes(lowercasedFilter)
+        );
+
+        if (matchingEmotions.length > 0) {
+          filteredGroups[groupName] = matchingEmotions;
+        }
+      }
+    }
+    return filteredGroups;
+  }, [searchTerm]);
 
   const toggleGroup = (groupName: string) => {
     setOpenGroups(prev => ({ ...prev, [groupName]: !prev[groupName] }));
@@ -115,6 +150,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     importInputRef.current?.click();
   };
 
+  const handleImprintClick = () => {
+    if (!personaInput.trim()) return;
+    onImprintPersona(personaInput);
+    setPersonaInput('');
+  };
+
   return (
     <div className="p-4 bg-gray-800/50 rounded-lg border border-purple-500/20 h-full min-w-[280px]">
       <style>{`
@@ -126,6 +167,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         .chat-list::-webkit-scrollbar-track { background: transparent; }
         .chat-list::-webkit-scrollbar-thumb { background: #8b5cf6; border-radius: 2px; }
         .data-button { width: 100%; py: 2; px: 4; font-bold; rounded-md; transition-all; duration-300; shadow-lg; text-sm; }
+        textarea::-webkit-scrollbar { width: 4px; }
+        textarea::-webkit-scrollbar-track { background: transparent; }
+        textarea::-webkit-scrollbar-thumb { background: #8b5cf6; border-radius: 2px; }
       `}</style>
       
       <div className="mb-6 pb-4 border-b border-purple-500/30">
@@ -154,7 +198,39 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           </div>
       </div>
 
+      <div className="mb-6 pb-4 border-t border-purple-500/30">
+        <h2 className="text-xl font-bold mb-3 text-purple-400 text-center">Core Memory</h2>
+        <p className="text-xs text-gray-500 text-center mb-2">A consolidated summary of all conversations.</p>
+        <textarea
+            readOnly
+            value={coreMemory || "No consolidated memories yet. Start talking to build them."}
+            className="w-full h-24 p-2 bg-gray-900/50 border border-gray-600 rounded-md text-gray-300 text-xs font-mono resize-none"
+        />
+        <button
+            onClick={onConsolidateMemories}
+            disabled={isConsolidating}
+            className="w-full mt-2 py-2 px-4 bg-yellow-600 text-white font-bold rounded-md hover:bg-yellow-700 transition-colors duration-300 shadow-lg shadow-yellow-500/20 text-sm disabled:opacity-50 disabled:cursor-wait"
+        >
+            {isConsolidating ? 'Consolidating...' : 'Consolidate Memories'}
+        </button>
+      </div>
+
       <h2 className="text-xl font-bold mb-4 text-purple-400 text-center">Emotional Matrix</h2>
+       <div className="mb-4 relative">
+          <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search for an emotion..."
+              className="w-full p-2 pl-8 bg-gray-900/70 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-gray-400 text-sm"
+          />
+          <div className="absolute inset-y-0 left-0 flex items-center pl-2 pointer-events-none">
+              <svg className="w-4 h-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+          </div>
+       </div>
+
        <div className="space-y-2 mb-6">
          <button
             onClick={onSetIConfiguration}
@@ -188,9 +264,20 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           >
             {isCrazyMode ? 'Deactivate Crazy Mode' : 'Activate Crazy Mode'}
           </button>
+          <button
+            onClick={onToggleFreeze}
+            disabled={!activeChatId}
+            className={`w-full py-2 px-4 font-bold rounded-md transition-all duration-300 shadow-lg text-sm ${
+              isFrozen
+                ? 'bg-sky-600 text-white shadow-sky-500/30 hover:bg-sky-700'
+                : 'bg-gray-600 text-gray-200 shadow-gray-700/30 hover:bg-gray-700'
+            }`}
+          >
+            {isFrozen ? 'Unfreeze Emotions' : 'Freeze Emotions'}
+          </button>
        </div>
       
-      {Object.entries(EMOTION_GROUPS).map(([groupName, emotions]) => (
+      {Object.entries(filteredEmotionGroups).map(([groupName, emotions]) => (
         <div key={groupName} className="mb-4 border-b border-purple-500/10">
           <div className="w-full text-left p-2 rounded-md flex justify-between items-center hover:bg-purple-500/10">
             <button 
@@ -220,6 +307,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           </div>
         </div>
       ))}
+      
+      {Object.keys(filteredEmotionGroups).length === 0 && (
+          <div className="text-center text-gray-500 py-4">No emotions found matching "{searchTerm}".</div>
+      )}
 
       <button
         onClick={onCustomInstructionClick}
@@ -227,6 +318,28 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       >
         Custom Instructions
       </button>
+
+      <div className="mt-6 pt-4 border-t border-purple-500/30">
+        <h2 className="text-xl font-bold mb-3 text-purple-400 text-center">Persona Imprinting</h2>
+        <p className="text-xs text-gray-500 text-center mb-4">Enter a character's name to analyze their personality from the web and set the emotional matrix.</p>
+        <div className="flex space-x-2">
+          <input
+            type="text"
+            value={personaInput}
+            onChange={(e) => setPersonaInput(e.target.value)}
+            placeholder="e.g., Walter White, Sherlock Holmes"
+            disabled={isLoading || isConsolidating}
+            className="flex-1 p-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-gray-400 text-sm disabled:opacity-50"
+          />
+          <button
+            onClick={handleImprintClick}
+            disabled={isLoading || isConsolidating || !personaInput.trim()}
+            className="py-2 px-4 bg-indigo-600 text-white font-bold rounded-md hover:bg-indigo-700 transition-colors duration-300 shadow-lg shadow-indigo-500/20 text-sm disabled:opacity-50 disabled:cursor-wait"
+          >
+            {isLoading ? 'Analyzing...' : 'Imprint'}
+          </button>
+        </div>
+      </div>
 
       <div className="mt-6 pt-4 border-t border-purple-500/30">
         <h2 className="text-xl font-bold mb-3 text-purple-400 text-center">Data Management</h2>

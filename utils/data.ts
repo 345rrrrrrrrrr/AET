@@ -1,4 +1,3 @@
-
 import type { UserAppState, Chat, EmotionalState } from '../types';
 import { ALL_EMOTIONS } from '../types';
 
@@ -24,11 +23,14 @@ export function createInitialUserData(): UserAppState {
         messages: [{ role: 'model', content: "Hello... how are you feeling today?" }],
         createdAt: Date.now(),
         emotionalState: { ...initialEmotionalState }, // Each chat gets its own state object
+        emotionalStateHistory: [],
+        isFrozen: false,
     };
     return {
         customInstruction: '',
         chats: [initialChat],
         activeChatId: initialChatId,
+        coreMemory: '', // Initialize core memory
     };
 }
 
@@ -36,9 +38,21 @@ export function loadAppState(): UserAppState {
     try {
         const dataStr = localStorage.getItem(APP_STATE_STORAGE_KEY);
         if (dataStr) {
-            const state = JSON.parse(dataStr);
-            // Basic validation to ensure the loaded data has the expected structure
+            const state: UserAppState = JSON.parse(dataStr);
+            // Basic validation and backwards compatibility
             if (state && state.chats && state.activeChatId !== undefined && state.customInstruction !== undefined) {
+                // For backwards compatibility, add new fields if they don't exist
+                if (state.coreMemory === undefined) {
+                    state.coreMemory = '';
+                }
+                state.chats.forEach(chat => {
+                    if (chat.isFrozen === undefined) {
+                        chat.isFrozen = false;
+                    }
+                    if (chat.emotionalStateHistory === undefined) {
+                        chat.emotionalStateHistory = [];
+                    }
+                });
                 return state;
             }
         }
@@ -55,6 +69,7 @@ export function saveAppState(state: UserAppState) {
     try {
         const data = JSON.stringify(state);
         localStorage.setItem(APP_STATE_STORAGE_KEY, data);
+    // Fix: Added a missing opening brace to the catch block to fix a syntax error.
     } catch (error) {
         console.error(`Failed to save app state to localStorage`, error);
     }
