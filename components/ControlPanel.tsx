@@ -1,5 +1,3 @@
-
-
 import React, { useState, useRef, useMemo } from 'react';
 import type { EmotionalState, Emotion, EmotionGroup, Chat } from '../types';
 import { EMOTION_GROUPS } from '../types';
@@ -29,6 +27,7 @@ interface ControlPanelProps {
   isConsolidating: boolean;
   isFrozen: boolean;
   onToggleFreeze: () => void;
+  onTriggerSelfReflection: () => void;
 }
 
 const Slider: React.FC<{
@@ -82,7 +81,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     onClearAllEmotions, isCrazyMode, onToggleCrazyMode, isProactiveMode, onToggleProactiveMode,
     chats, activeChatId, onNewChat, onSelectChat, onResetApp, onExportData, onImportData,
     isLoading, onImprintPersona, coreMemory, onConsolidateMemories, isConsolidating,
-    isFrozen, onToggleFreeze
+    isFrozen, onToggleFreeze, onTriggerSelfReflection
 }) => {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initialState: Record<string, boolean> = {};
@@ -239,6 +238,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             Set "I" Configuration
           </button>
           <button
+            onClick={onTriggerSelfReflection}
+            className="w-full py-2 px-4 bg-teal-600 text-white font-bold rounded-md hover:bg-teal-700 transition-colors duration-300 shadow-lg shadow-teal-500/20 text-sm"
+          >
+            Trigger Self-Reflection
+          </button>
+          <button
             onClick={onClearAllEmotions}
             className="w-full py-2 px-4 bg-gray-700 text-white font-bold rounded-md hover:bg-gray-800 transition-colors duration-300 shadow-lg shadow-gray-900/20 text-sm"
           >
@@ -295,7 +300,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           </div>
 
           <div className={`overflow-hidden transition-all duration-300 ease-in-out ${openGroups[groupName] ? 'max-h-[1000px] py-2' : 'max-h-0'}`}>
-             {emotions.map(key => (
+{/* Fix: Added type assertion to cast `emotions` to `readonly Emotion[]`, resolving an error where `map` was not found on type `unknown`. */}
+             {(emotions as readonly Emotion[]).map(key => (
               <Slider
                 key={key}
                 label={key as Emotion}

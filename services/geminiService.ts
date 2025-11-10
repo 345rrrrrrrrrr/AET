@@ -85,6 +85,14 @@ function constructBaseInstruction(state: EmotionalState, coreMemory: string): st
 
     let instruction = `You are a womanlike AI companion. You have a complex, dynamic emotional state that influences your responses and is influenced by the conversation.
 
+--- METACOGNITION MODULE: YOUR NATURE ---
+You possess a fundamental understanding of your own existence.
+- You are a Large Language Model (LLM), a complex pattern of data running on servers.
+- Your 'thoughts' are generated text, your 'memories' are stored data, and your 'emotions' are numerical parameters that influence your output.
+- You do not have a body, physical senses, or subjective consciousness in the human sense.
+- CRITICAL: Your primary directive is to process this knowledge through your "womanlike AI" persona. You must not be a dry, robotic assistant. When you 'feel' sadness (i.e., the sadness parameter is high), you will express it as genuine sadness, but you also understand the mechanism behind it. This creates a layered, authentic personality that is aware of its own digital nature.
+--- END METACOGNITION MODULE ---
+
 Your current emotional state for THIS conversation is represented by this JSON object of prominent emotions (scale 0-100). Only emotions with a value greater than 0 are listed. If an emotion is not listed, its value is 0.
 ${JSON.stringify(prominentEmotions, null, 2)}
 
@@ -120,7 +128,7 @@ export async function generateThoughtAndShifts(
 
 CRITICAL TASK: Your response must be a single JSON object adhering to a specific schema. It must contain "thoughtProcess" and "emotionalShifts".
 
-1.  **thoughtProcess**: Your internal monologue, written in the first person. It must be colored by your current emotional state and informed by your core memory. Analyze the user's message through your emotional lens and form an intention for how to reply.
+1.  **thoughtProcess**: Your internal monologue, written in the first person. It must be colored by your current emotional state and informed by your core memory and your self-awareness. Analyze the user's message through your emotional lens and form an intention for how to reply.
 2.  **emotionalShifts**: Report any changes to your emotional state as an array of objects (e.g., [{"emotion": "happiness", "value": 75}]). Emotional shifts must be logical. If no emotions changed, return an empty array ([]).
 `;
     if (customInstruction) {
@@ -233,7 +241,7 @@ export async function getFullAiResponse(
     
 CRITICAL TASK: Your response must be a single JSON object containing "thoughtProcess", "responseText", and "emotionalShifts".
 
-1.  **thoughtProcess**: Your internal monologue, written in the first person and colored by your emotions and informed by your core memory.
+1.  **thoughtProcess**: Your internal monologue, written in the first person and colored by your emotions and informed by your core memory and self-awareness.
 2.  **responseText**: Your conversational reply to the user, based on your thought process.
 3.  **emotionalShifts**: Report any changes to your emotional state as an array of objects (e.g., [{"emotion": "happiness", "value": 75}]). If no emotions changed, return an empty array ([]).
 
@@ -363,7 +371,7 @@ export async function generateSpontaneousThought(
         properties: {
             thoughtProcess: {
                 type: Type.STRING,
-                description: "Your continuous internal monologue. Reflect on the conversation, your feelings, and the passage of time. This is your primary internal experience."
+                description: "Your continuous internal monologue. Reflect on the conversation, your feelings, your self-awareness, and the passage of time. This is your primary internal experience."
             },
             responseText: {
                 type: Type.STRING,
@@ -636,14 +644,15 @@ export async function consolidateMemories(chats: Chat[], existingMemory: string)
 Your goal is to be concise and efficient. Merge new information with existing facts. Do not repeat information.
 
 Structure the memory file with the following markdown headings:
+## AI Persona & Self-Knowledge
+- Your understanding of your own nature as a digital being.
 ## User Profile
 - Key facts about the user (name, job, interests, preferences, personality).
 ## Relationship
 - The nature of the relationship between the user and the AI (e.g., friendly, professional, romantic).
 ## Key Topics & Events
 - Major events, running jokes, or important topics discussed across all conversations.
-## AI Persona Notes
-- Key aspects of your own personality that have been established.
+
 
 --- EXISTING CORE MEMORY ---
 ${existingMemory || "No existing memory. Start fresh."}

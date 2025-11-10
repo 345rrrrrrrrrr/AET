@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { ChatWindow } from './components/ChatWindow';
@@ -368,6 +369,13 @@ export default function App() {
     setChats(prev => prev.map(chat => chat.id === activeChatId ? { ...chat, isFrozen: !chat.isFrozen } : chat));
     addLog(`Emotions for active chat are now ${!isFrozen ? 'FROZEN' : 'UNFROZEN'}.`, 'system');
   }, [activeChatId, isFrozen, addLog]);
+
+  const handleTriggerSelfReflection = useCallback(() => {
+    const reflectionPrompt = "Reflect on your nature as an AI and your recent experiences. What does it mean for you to be 'here' with me right now?";
+    addLog("User triggered AI self-reflection protocol.", "system");
+    handleSendMessage(reflectionPrompt);
+  }, [handleSendMessage, addLog]);
+
 
   // --- Simulation Logic ---
 
@@ -1328,6 +1336,7 @@ export default function App() {
                 isConsolidating={isConsolidating}
                 isFrozen={isFrozen}
                 onToggleFreeze={handleToggleFreeze}
+                onTriggerSelfReflection={handleTriggerSelfReflection}
              />
            </div>
         </aside>
