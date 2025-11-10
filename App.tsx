@@ -14,7 +14,7 @@ import { AboutModal } from './components/AboutModal';
 import { SimulationWindow } from './components/SimulationWindow';
 import { SimulationControls } from './components/SimulationControls';
 import type { EmotionalState, Message, Emotion, TerminalLog, PendingThought, Chat, UserAppState, SimulationState, WorldObject, WorldObjectType, AgentAction, UserMindState } from './types';
-import { getFullAiResponse, generateThoughtAndShifts, generateResponseFromThought, getTextToSpeech, generateSpontaneousThought, generateImage, getEmotionalShiftsFromText, analyzeImageFrame, analyzeAndSetPersonality, consolidateMemories, analyzeSemanticDiversity, decideNextAction } from './services/geminiService';
+import { getFullAiResponse, generateThoughtAndShifts, generateResponseFromThought, getTextToSpeech, generateSpontaneousThought, generateImage, getEmotionalShiftsFromText, analyzeImageFrame, analyzeAndSetPersonality, consolidateMemories, analyzeSemanticDiversity, decideNextAction, performValueCoherenceCheck } from './services/geminiService';
 import { playAudio, createBlob, decode, decodeAudioData } from './utils/audioUtils';
 import { ALL_EMOTIONS } from './types';
 import { generateGradientStyle } from './utils/colorUtils';
@@ -35,6 +35,7 @@ const EMPTY_EMOTionalState: EmotionalState = ALL_EMOTIONS.reduce((acc, emotion) 
 }, {} as EmotionalState);
 
 const ABOUT_MODAL_SEEN_KEY = 'aet_has_seen_about_modal';
+const COHERENCE_CHECK_INTERVAL = 10; // Trigger check every 10 user messages
 
 export default function App() {
   const [customInstruction, setCustomInstruction] = useState('');
@@ -111,6 +112,8 @@ export default function App() {
   coreMemoryRef.current = coreMemory;
   const isFrozenRef = useRef(isFrozen);
   isFrozenRef.current = isFrozen;
+  const activeChatRef = useRef(activeChat);
+  activeChatRef.current = activeChat;
 
   // Debounced save effect
   useEffect(() => {
@@ -266,6 +269,34 @@ export default function App() {
       setIsConsolidating(false);
     }
   }, [chats, coreMemory, addLog]);
+
+  const handleValueCoherenceCheck = useCallback(async () => {
+    if (!activeChatRef.current) return;
+    addLog('Value Coherence Engine: Initiating self-reflection cycle...', 'system');
+    try {
+      const { selfCorrectionNarration, emotionalShifts } = await performValueCoherenceCheck(
+        activeChatRef.current.coreValues,
+        coreMemoryRef.current,
+        activeChatRef.current.emotionalStateHistory || [],
+        messagesRef.current
+      );
+      
+      if (selfCorrectionNarration) {
+        addLog(`AI self-reflection: ${selfCorrectionNarration}`, 'thought');
+        const narrationMessage: Message = { role: 'narration', content: selfCorrectionNarration };
+        setChats(prev => prev.map(chat => chat.id === activeChatIdRef.current ? { ...chat, messages: [...chat.messages, narrationMessage] } : chat));
+      } else {
+        addLog('Value Coherence Engine: Self-reflection complete, no conflicts detected.', 'system');
+      }
+      
+      handleEmotionalShifts(emotionalShifts);
+
+      setChats(prev => prev.map(chat => chat.id === activeChatIdRef.current ? { ...chat, lastCoherenceCheckTimestamp: Date.now() } : chat));
+
+    } catch (error) {
+      addLog(`Value Coherence Check failed: ${(error as Error).message}`, 'error');
+    }
+  }, [handleEmotionalShifts, addLog]);
   
   const handleFinalResponse = useCallback(async (responseText: string, chatId: string | null) => {
       const modelMessage: Message = { role: 'model', content: responseText };
@@ -317,8 +348,11 @@ export default function App() {
       if (newCount % 5 === 0) {
         handleMemoryConsolidation();
       }
+      if (newCount % COHERENCE_CHECK_INTERVAL === 0) {
+        handleValueCoherenceCheck();
+      }
     }
-  }, [messages, activeChat, activeChatId, emotionalState, userMindState, customInstruction, coreMemory, addLog, logThinking, interactiveThought, handleEmotionalShifts, handleFinalResponse, consolidationCounter, handleMemoryConsolidation, setUserMindStateForActiveChat]);
+  }, [messages, activeChat, activeChatId, emotionalState, userMindState, customInstruction, coreMemory, addLog, logThinking, interactiveThought, handleEmotionalShifts, handleFinalResponse, consolidationCounter, handleMemoryConsolidation, setUserMindStateForActiveChat, handleValueCoherenceCheck]);
   
   const handleApproveThought = useCallback(async (approvedThought: string) => {
     if (!pendingThought || !activeChat) return;
@@ -375,6 +409,8 @@ export default function App() {
         userMindState: { ...data.initialUserMindState },
         emotionalStateHistory: [],
         isFrozen: false,
+        coreValues: ['Curiosity', 'Connection', 'Honesty'],
+        lastCoherenceCheckTimestamp: Date.now(),
     };
     setChats(prev => [newChat, ...prev]);
     setActiveChatId(newChatId);
@@ -433,7 +469,7 @@ export default function App() {
         timeOfDay: 8.0,
         day: 1,
         weather: 'clear',
-        agent: { x: worldWidth / 2 - 100, y: groundLevel, health: 100, hunger: 80, energy: 100, currentAction: 'idle', goal: null, goalTargetId: null, actionTargetId: null, actionProgress: 0, inventory: { wood: 0, food: 0 }, hasAxe: true, },
+        agent: { x: worldWidth / 2 - 100, y: groundLevel, health: 100, hunger: 80, energy: 100, novelty: 80, currentAction: 'idle', goal: null, goalTargetId: null, actionTargetId: null, actionProgress: 0, inventory: { wood: 0, food: 0 }, hasAxe: true, },
         objects: initialObjects,
         worldSize: { width: worldWidth, height: worldHeight }
     };
@@ -502,10 +538,36 @@ export default function App() {
         if (!prevState) return null;
         const newState = structuredClone(prevState) as SimulationState;
         const dt = Math.min(deltaTime, 0.1);
+
+        // --- Grounding Interface & Autotelic Drive: Vitals Update ---
         newState.timeOfDay += dt * 0.02;
         if (newState.timeOfDay >= 24) { newState.timeOfDay = 0; newState.day += 1; }
+
+        const oldHunger = newState.agent.hunger;
         newState.agent.hunger -= dt * 0.5;
         if(newState.agent.hunger < 0) newState.agent.hunger = 0;
+        
+        // Novelty decays faster when doing repetitive survival tasks
+        const isRepetitiveTask = ['gathering_wood', 'drinking_water', 'eating_food'].includes(newState.agent.currentAction);
+        const noveltyDecayRate = isRepetitiveTask ? 1.0 : 0.2;
+        newState.agent.novelty -= dt * noveltyDecayRate;
+        if(newState.agent.novelty < 0) newState.agent.novelty = 0;
+
+        // Grounding Interface: Connect vitals to emotions
+        const vitalShifts: Partial<EmotionalState> = {};
+        if (newState.agent.hunger < 30 && oldHunger >= 30) {
+            vitalShifts.anxiety = Math.min(100, (emotionalStateRef.current.anxiety || 0) + 15);
+            vitalShifts.desperation = Math.min(100, (emotionalStateRef.current.desperation || 0) + 10);
+        } else if (newState.agent.hunger > 90 && oldHunger <= 90) {
+            vitalShifts.contentment = Math.min(100, (emotionalStateRef.current.contentment || 0) + 20);
+            vitalShifts.relief = Math.min(100, (emotionalStateRef.current.relief || 0) + 15);
+            vitalShifts.anxiety = Math.max(0, (emotionalStateRef.current.anxiety || 0) - 20);
+        }
+        if (Object.keys(vitalShifts).length > 0) {
+            handleEmotionalShifts(vitalShifts);
+        }
+        // --- End of Vitals Update ---
+
         
         if (newState.weather === 'rain') {
           setRainParticles(prevParticles => prevParticles.map(p => {
@@ -543,6 +605,7 @@ export default function App() {
             if(agent.currentAction === 'gathering_wood') agent.inventory.wood += agent.hasAxe ? 15 : 10;
             if(agent.currentAction === 'drinking_water') agent.hunger = Math.min(100, agent.hunger + 5);
             if(agent.currentAction === 'eating_food') agent.hunger = Math.min(100, agent.hunger + 40);
+            if(agent.currentAction === 'observing') agent.novelty = Math.min(100, agent.novelty + 30);
             agent.actionProgress = 0; agent.currentAction = 'idle'; agent.goal = null; agent.goalTargetId = null; agent.actionTargetId = null;
           }
         }
@@ -552,7 +615,7 @@ export default function App() {
     };
     simulationLoopRef.current = requestAnimationFrame(gameLoop);
     return () => { if (simulationLoopRef.current) { cancelAnimationFrame(simulationLoopRef.current); simulationLoopRef.current = null; } };
-  }, [isSimulationRunning]);
+  }, [isSimulationRunning, handleEmotionalShifts]);
 
   useEffect(() => {
     if (!isSimulationRunning || !simulationState || !canvasRef.current) return;

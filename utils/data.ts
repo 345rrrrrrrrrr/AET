@@ -36,6 +36,8 @@ export function createInitialUserData(): UserAppState {
         userMindState: { ...initialUserMindState },
         emotionalStateHistory: [],
         isFrozen: false,
+        coreValues: ['Curiosity', 'Connection', 'Honesty'],
+        lastCoherenceCheckTimestamp: Date.now(),
     };
     return {
         customInstruction: '',
@@ -57,15 +59,11 @@ export function loadAppState(): UserAppState {
                     state.coreMemory = foundationalMemory;
                 }
                 state.chats.forEach(chat => {
-                    if (chat.isFrozen === undefined) {
-                        chat.isFrozen = false;
-                    }
-                    if (chat.emotionalStateHistory === undefined) {
-                        chat.emotionalStateHistory = [];
-                    }
-                    if (chat.userMindState === undefined) {
-                        chat.userMindState = { ...initialUserMindState };
-                    }
+                    if (chat.isFrozen === undefined) chat.isFrozen = false;
+                    if (chat.emotionalStateHistory === undefined) chat.emotionalStateHistory = [];
+                    if (chat.userMindState === undefined) chat.userMindState = { ...initialUserMindState };
+                    if (chat.coreValues === undefined) chat.coreValues = ['Curiosity', 'Connection', 'Honesty'];
+                    if (chat.lastCoherenceCheckTimestamp === undefined) chat.lastCoherenceCheckTimestamp = Date.now();
                 });
                 return state;
             }
@@ -83,7 +81,6 @@ export function saveAppState(state: UserAppState) {
     try {
         const data = JSON.stringify(state);
         localStorage.setItem(APP_STATE_STORAGE_KEY, data);
-    // Fix: Added a missing opening brace to the catch block to fix a syntax error.
     } catch (error) {
         console.error(`Failed to save app state to localStorage`, error);
     }

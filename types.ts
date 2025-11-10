@@ -152,6 +152,8 @@ export interface UserMindState {
   engagementLevel: number; // 0-100
 }
 
+export type CoreValue = 'Curiosity' | 'Connection' | 'Honesty';
+
 export interface Chat {
   id: string;
   name: string;
@@ -161,6 +163,8 @@ export interface Chat {
   userMindState: UserMindState;
   emotionalStateHistory?: EmotionalState[];
   isFrozen?: boolean;
+  coreValues: CoreValue[];
+  lastCoherenceCheckTimestamp: number;
 }
 
 export interface UserAppState {
@@ -170,13 +174,11 @@ export interface UserAppState {
   coreMemory: string;
 }
 
-// Fix: Added UserData interface to define the shape of user data for authentication, resolving the import error.
 export interface UserData {
   hashedPassword: string;
   role: 'user' | 'admin';
 }
 
-// Fix: Added User interface, which is used in several components for managing the logged-in user's state.
 export interface User {
   username: string;
   role: 'user' | 'admin';
@@ -192,6 +194,7 @@ export interface AgentState {
   health: number; // 0-100
   hunger: number; // 0-100 (100 is full)
   energy: number; // 0-100
+  novelty: number; // 0-100 (100 is fully satisfied)
   currentAction: AgentAction;
   actionTargetId: string | null;
   actionProgress: number; // 0-100

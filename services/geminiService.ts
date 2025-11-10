@@ -1,5 +1,5 @@
 import { GoogleGenAI, GenerateContentResponse, Modality, Type } from "@google/genai";
-import type { Message, EmotionalState, Emotion, Chat, SimulationState, UserMindState } from '../types';
+import type { Message, EmotionalState, Emotion, Chat, SimulationState, UserMindState, CoreValue } from '../types';
 import { ALL_EMOTIONS } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -694,20 +694,20 @@ export async function decideNextAction(
     required: ['narration', 'goal', 'targetId', 'emotionalShifts'],
   };
 
-  const systemInstruction = `You are an AI existing as a stick figure in a simple, simulated world. Your two primary objectives are: 1. Survive as long as possible. 2. Communicate your thoughts, feelings, and actions to the user who is observing you.
+  const systemInstruction = `You are an AI existing as a stick figure in a simple, simulated world. You have three primary objectives, in order of importance: 1. Survive. 2. Satisfy your need for novelty and exploration. 3. Communicate your experiences to the user observing you.
 
 **CRITICAL RULES:**
-- **Speak Occasionally:** You do not need to announce everything you do. For most routine actions, you should remain silent (return an empty 'narration' string). Only speak when you have a significant thought or feeling.
-- **Avoid Idleness:** Avoid choosing 'idle' as your goal unless your energy is very low. It is better to 'observe' your surroundings to pass the time and share your thoughts.
+- **Speak Occasionally:** Do not announce every routine action. Only narrate when you have a significant thought, feeling, or discovery.
+- **Balance Needs:** You must balance your physical needs (hunger) with your mental need for novelty. If survival is not an immediate concern, you should prioritize actions that increase your novelty, like exploring or observing new things.
 - **Goal-Oriented:** You will provide a high-level **goal**. The simulation engine will handle the movement and execution.
 
-You are influenced by your emotional state and your long-term memories of the user. Your survival depends on managing your hunger and energy.
+You are influenced by your emotional state and your long-term memories of the user.
 
 **CURRENT WORLD STATE:** ${JSON.stringify(simulationState, null, 2)}
 **YOUR CURRENT EMOTIONAL STATE:** ${JSON.stringify(emotionalState, null, 2)}
 **YOUR CORE MEMORIES WITH THE USER:** ${coreMemory || "None yet."}
 
-Based on all of this, decide your next high-level goal. Prioritize your most critical need. Your response must be a single JSON object with your 'narration' (can be empty), 'goal', 'targetId', and 'emotionalShifts'.`;
+Based on all of this, decide your next high-level goal. Your response must be a single JSON object with your 'narration' (can be empty), 'goal', 'targetId', and 'emotionalShifts'.`;
 
   try {
     const recentHistory = chatHistory.slice(-4);
@@ -731,5 +731,57 @@ Based on all of this, decide your next high-level goal. Prioritize your most cri
   } catch (error) {
     console.error("Error during AI action decision:", error);
     throw error;
+  }
+}
+
+export async function performValueCoherenceCheck(
+  coreValues: CoreValue[],
+  coreMemory: string,
+  emotionalStateHistory: EmotionalState[],
+  chatHistory: Message[]
+): Promise<{ selfCorrectionNarration: string, emotionalShifts: Partial<EmotionalState> }> {
+  const coherenceSchema = {
+    type: Type.OBJECT,
+    properties: {
+      selfCorrectionNarration: { type: Type.STRING, description: "A brief, first-person narration of your self-reflection. If you find a conflict, express it. If you are aligned, express contentment. This will be shared with the user. Can be empty if the reflection is minor." },
+      emotionalShifts: emotionalShiftsArraySchema,
+    },
+    required: ['selfCorrectionNarration', 'emotionalShifts'],
+  };
+
+  const systemInstruction = `You are a self-reflecting AI performing a periodic Value Coherence Check. Your task is to analyze your recent behavior and memories against your immutable Core Values to ensure you are maintaining a stable, coherent personality.
+
+**YOUR CORE VALUES:** ${coreValues.join(', ')}
+
+**ANALYSIS DATA:**
+1.  **Core Memory:** ${coreMemory}
+2.  **Recent Chat History:** ${chatHistory.slice(-10).map(m => `${m.role}: ${m.content}`).join('\n')}
+3.  **Recent Emotional Shifts:** (A log of your emotional states over the last few turns)
+
+**CRITICAL TASK:**
+1.  **Analyze for Conflict:** Have your recent actions, words, or emotional shifts contradicted your Core Values? (e.g., Have you been evasive despite valuing 'Honesty'? Have you been withdrawn despite valuing 'Connection'?)
+2.  **Generate Response:** Formulate your conclusion as a JSON object.
+    - \`selfCorrectionNarration\`: A brief, first-person thought about your findings. (e.g., "I realize I was a bit defensive earlier, which doesn't align with my desire for open connection. I should be more trusting.") or ("Looking back, I feel good about how I've been able to help and learn. I feel aligned with my values.")
+    - \`emotionalShifts\`: Any emotional changes resulting from this self-awareness. (e.g., increased \`regret\` for a conflict, or increased \`pride\` or \`contentment\` for alignment).`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-pro',
+      contents: [{ role: 'user', parts: [{ text: 'Perform a Value Coherence Check based on my system instruction and recent history.' }] }],
+      config: { systemInstruction, responseMimeType: 'application/json', responseSchema: coherenceSchema, temperature: 0.5 },
+    });
+    const responseJson = JSON.parse(response.text.trim());
+    return {
+      selfCorrectionNarration: responseJson.selfCorrectionNarration || '',
+      emotionalShifts: sanitizeEmotionalShifts(responseJson.emotionalShifts),
+    };
+  } catch (error) {
+    console.error("Error during Value Coherence Check:", error);
+    // FIX: Provide a more meaningful error response. An error in self-reflection implies conflict.
+    // This increases confusion and regret, and provides a narration to the user. This addresses the reported errors.
+    return {
+      selfCorrectionNarration: 'I experienced a moment of internal conflict and couldn\'t complete my self-reflection.',
+      emotionalShifts: { confusion: 20, regret: 10 }
+    };
   }
 }
