@@ -1,5 +1,19 @@
-
 // types.ts
+
+// --- AI Identity ---
+export interface AIIdentity {
+  birthDate: number;
+  totalInteractions: number;
+  significantMemories: Array<{
+    timestamp: number;
+    chatId: string;
+    summary: string;
+    emotionalImpact: Partial<EmotionalState>;
+  }>;
+  personalPhilosophy: string; // Evolves over time
+  selfNarrative: string; // "My story of who I am"
+  relationshipWithUser: string; // How she sees you
+}
 
 // --- Base Emotion Types ---
 
@@ -50,7 +64,7 @@ export interface UserAppState {
   customInstruction: string;
   chats: Chat[];
   activeChatId: string | null;
-  coreMemory?: string;
+  aiIdentity: AIIdentity;
 }
 
 // --- Terminal & UI ---

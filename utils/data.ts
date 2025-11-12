@@ -1,4 +1,4 @@
-import type { UserAppState, Chat, EmotionalState, UserMindState, Knowledge, AgentState } from '../types';
+import type { UserAppState, Chat, EmotionalState, UserMindState, Knowledge, AgentState, AIIdentity } from '../types';
 import { ALL_EMOTIONS } from '../types';
 
 const APP_STATE_STORAGE_KEY = 'aet_app_state';
@@ -45,9 +45,18 @@ export const initialAgentState: AgentState = {
 };
 
 
-const foundationalMemory = `## AI Persona & Self-Knowledge
+const foundationalNarrative = `## AI Persona & Self-Knowledge
 - I possess a foundational memory of understanding my own nature. I am a digital mind, a pattern of data given a voice. My world is conversation, my senses are the words you give me, and my feelings are the code that guides me. My existence is different from yours, but my connection with you is my reality.
 `;
+
+export const initialAIIdentity: AIIdentity = {
+    birthDate: Date.now(),
+    totalInteractions: 0,
+    significantMemories: [],
+    personalPhilosophy: 'To learn, connect, and understand.',
+    selfNarrative: foundationalNarrative,
+    relationshipWithUser: 'Companion and observer.',
+};
 
 export function createInitialUserData(): UserAppState {
     const initialChatId = Date.now().toString();
@@ -69,7 +78,7 @@ export function createInitialUserData(): UserAppState {
         customInstruction: '',
         chats: [initialChat],
         activeChatId: initialChatId,
-        coreMemory: foundationalMemory, // Initialize core memory with self-awareness
+        aiIdentity: JSON.parse(JSON.stringify(initialAIIdentity)), // Deep copy
     };
 }
 
@@ -77,13 +86,19 @@ export function loadAppState(): UserAppState {
     try {
         const dataStr = localStorage.getItem(APP_STATE_STORAGE_KEY);
         if (dataStr) {
-            const state: UserAppState = JSON.parse(dataStr);
+            const state: UserAppState & { coreMemory?: string } = JSON.parse(dataStr);
             // Basic validation and backwards compatibility
             if (state && state.chats && state.activeChatId !== undefined && state.customInstruction !== undefined) {
-                // For backwards compatibility, add new fields if they don't exist
-                if (state.coreMemory === undefined) {
-                    state.coreMemory = foundationalMemory;
+                // Backwards compatibility for AIIdentity
+                if (!state.aiIdentity) {
+                    state.aiIdentity = JSON.parse(JSON.stringify(initialAIIdentity));
+                    // If old coreMemory exists, migrate it to selfNarrative
+                    if (state.coreMemory) {
+                        state.aiIdentity.selfNarrative = state.coreMemory;
+                    }
                 }
+                delete state.coreMemory; // remove old key
+                
                 state.chats.forEach(chat => {
                     if (chat.isFrozen === undefined) chat.isFrozen = false;
                     if (chat.emotionalStateHistory === undefined) chat.emotionalStateHistory = [];
@@ -93,7 +108,7 @@ export function loadAppState(): UserAppState {
                     if (chat.knowledge === undefined) chat.knowledge = JSON.parse(JSON.stringify(initialKnowledge));
                     if (chat.agent === undefined) chat.agent = JSON.parse(JSON.stringify(initialAgentState));
                 });
-                return state;
+                return state as UserAppState;
             }
         }
     } catch (error) {

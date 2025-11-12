@@ -1,6 +1,5 @@
-
 import React, { useState, useRef } from 'react';
-import type { Chat, UserMindState, AgentState, EmotionalState, EmotionGroup, Emotion } from '../types';
+import type { Chat, UserMindState, AgentState, EmotionalState, EmotionGroup, Emotion, AIIdentity } from '../types';
 import { EMOTION_GROUPS, ALL_EMOTIONS } from '../types';
 import { EMOTION_COLORS } from '../utils/colorUtils';
 
@@ -16,7 +15,7 @@ interface ControlPanelProps {
   onResetApp: () => void;
   onExportData: () => void;
   onImportData: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  coreMemory: string;
+  aiIdentity: AIIdentity;
   onConsolidateMemories: () => void;
   isConsolidating: boolean;
   emotionalState: EmotionalState;
@@ -30,7 +29,7 @@ interface ControlPanelProps {
 export const ControlPanel: React.FC<ControlPanelProps> = ({ 
     userMindState, agentState, setAgentState, onCustomInstructionClick,
     chats, activeChatId, onNewChat, onSelectChat, onResetApp, onExportData, onImportData,
-    coreMemory, onConsolidateMemories, isConsolidating,
+    aiIdentity, onConsolidateMemories, isConsolidating,
     emotionalState, setEmotionalState, isFrozen, onToggleFreeze, onSetConfigI, onClearEmotions
 }) => {
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -141,10 +140,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       </div>
 
       <div className="mb-4 pb-4 border-b border-purple-500/30">
-        <h2 className="text-xl font-bold mb-3 text-purple-400 text-center">Core Memory</h2>
+        <h2 className="text-xl font-bold mb-3 text-purple-400 text-center">Self Narrative</h2>
         <textarea
             readOnly
-            value={coreMemory || "No consolidated memories yet."}
+            value={aiIdentity.selfNarrative || "No self-narrative yet."}
             className="w-full h-24 p-2 bg-gray-900/50 border border-gray-600 rounded-md text-gray-300 text-xs font-mono resize-none"
         />
         <button
@@ -152,7 +151,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             disabled={isConsolidating}
             className="w-full mt-2 py-2 px-4 bg-yellow-600 text-white font-bold rounded-md hover:bg-yellow-700 transition-colors duration-300 shadow-lg shadow-yellow-500/20 text-sm disabled:opacity-50 disabled:cursor-wait"
         >
-            {isConsolidating ? 'Consolidating...' : 'Consolidate Memories'}
+            {isConsolidating ? 'Consolidating...' : 'Consolidate Identity'}
         </button>
       </div>
       

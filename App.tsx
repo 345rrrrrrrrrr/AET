@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { ChatWindow } from './components/ChatWindow';
@@ -13,7 +12,7 @@ import { AboutModal } from './components/AboutModal';
 import { SimulationWindow } from './components/SimulationWindow';
 import { SimulationControls } from './components/SimulationControls';
 import { PlanTracker } from './components/PlanTracker';
-import type { EmotionalState, Message, Emotion, TerminalLog, PendingThought, Chat, UserAppState, SimulationState, WorldObject, WorldObjectType, AgentAction, UserMindState, Knowledge, AgentState } from './types';
+import type { EmotionalState, Message, Emotion, TerminalLog, PendingThought, Chat, UserAppState, SimulationState, WorldObject, WorldObjectType, AgentAction, UserMindState, Knowledge, AgentState, AIIdentity } from './types';
 import { getFullAiResponse, generateThoughtAndShifts, generateResponseFromThought, getTextToSpeech, generateSpontaneousThought, generateImage, getEmotionalShiftsFromText, analyzeImageFrame, analyzeAndSetPersonality, consolidateMemories, analyzeSemanticDiversity, performValueCoherenceCheck, formulatePlan } from './services/geminiService';
 import { playAudio, createBlob, decode, decodeAudioData } from './utils/audioUtils';
 import { applyEmotionalInertia } from './utils/emotionUtils';
@@ -42,7 +41,7 @@ export default function App() {
   const [customInstruction, setCustomInstruction] = useState('');
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [coreMemory, setCoreMemory] = useState('');
+  const [aiIdentity, setAiIdentity] = useState<AIIdentity>(data.initialAIIdentity);
   const [isLoading, setIsLoading] = useState(false);
   const [isConsolidating, setIsConsolidating] = useState(false);
   const [isCustomInstructionModalOpen, setCustomInstructionModalOpen] = useState(false);
@@ -109,8 +108,8 @@ export default function App() {
   customInstructionRef.current = customInstruction;
   const activeChatIdRef = useRef(activeChatId);
   activeChatIdRef.current = activeChatId;
-  const coreMemoryRef = useRef(coreMemory);
-  coreMemoryRef.current = coreMemory;
+  const aiIdentityRef = useRef(aiIdentity);
+  aiIdentityRef.current = aiIdentity;
   const isFrozenRef = useRef(isFrozen);
   isFrozenRef.current = isFrozen;
   const activeChatRef = useRef(activeChat);
@@ -125,12 +124,12 @@ export default function App() {
   useEffect(() => {
     const handler = setTimeout(() => {
       if (chats.length > 0) { // Only save if there's data
-        data.saveAppState({ customInstruction, chats, activeChatId, coreMemory });
+        data.saveAppState({ customInstruction, chats, activeChatId, aiIdentity });
       }
     }, 1000); // Debounce for 1 second
 
     return () => clearTimeout(handler);
-  }, [customInstruction, chats, activeChatId, coreMemory]);
+  }, [customInstruction, chats, activeChatId, aiIdentity]);
 
   const addLog = useCallback((message: string, type: TerminalLog['type'] = 'info') => {
     const newLog: TerminalLog = {
@@ -160,7 +159,7 @@ export default function App() {
     setCustomInstruction(savedData.customInstruction);
     setChats(savedData.chats);
     setActiveChatId(savedData.activeChatId);
-    setCoreMemory(savedData.coreMemory);
+    setAiIdentity(savedData.aiIdentity);
     
     addLog("Terminal initialized.", 'system');
     addLog("AET session loaded from local storage.", 'system');
@@ -258,18 +257,18 @@ export default function App() {
   }, [addLog, setEmotionalStateForActiveChat]);
   
   const handleMemoryConsolidation = useCallback(async () => {
-    addLog('Core memory consolidation initiated...', 'system');
+    addLog('AI identity consolidation initiated...', 'system');
     setIsConsolidating(true);
     try {
-      const newMemory = await consolidateMemories(chats, coreMemory);
-      setCoreMemory(newMemory);
-      addLog('Core memory successfully updated.', 'info');
+      const newIdentity = await consolidateMemories(chats, aiIdentity);
+      setAiIdentity(newIdentity);
+      addLog('AI identity successfully updated.', 'info');
     } catch (error) {
-      addLog(`Core memory consolidation failed: ${(error as Error).message}`, 'error');
+      addLog(`AI identity consolidation failed: ${(error as Error).message}`, 'error');
     } finally {
       setIsConsolidating(false);
     }
-  }, [chats, coreMemory, addLog]);
+  }, [chats, aiIdentity, addLog]);
 
   const handleValueCoherenceCheck = useCallback(async () => {
     if (!activeChatRef.current) return;
@@ -277,7 +276,7 @@ export default function App() {
     try {
       const { selfCorrectionNarration, emotionalShifts } = await performValueCoherenceCheck(
         activeChatRef.current.coreValues,
-        coreMemoryRef.current,
+        aiIdentityRef.current,
         activeChatRef.current.emotionalStateHistory || [],
         messagesRef.current
       );
@@ -322,14 +321,14 @@ export default function App() {
 
     try {
       if (interactiveThought) {
-        const { thoughtProcess, emotionalShifts, updatedUserMindState, agentStateChanges } = await generateThoughtAndShifts(currentMessages, emotionalState, customInstruction, coreMemory, userMindState, agentState, knowledge);
+        const { thoughtProcess, emotionalShifts, updatedUserMindState, agentStateChanges } = await generateThoughtAndShifts(currentMessages, emotionalState, customInstruction, aiIdentity, userMindState, agentState, knowledge);
         setPendingThought({ thoughtProcess, emotionalShifts, updatedUserMindState, agentStateChanges });
         if(updatedUserMindState) setUserMindStateForActiveChat(() => updatedUserMindState);
         setIsThoughtModalOpen(true);
         setIsLoading(false); 
         return null; 
       } else {
-        const { thoughtProcess, responseText, emotionalShifts, updatedUserMindState, agentStateChanges } = await getFullAiResponse(currentMessages, emotionalState, customInstruction, coreMemory, userMindState, agentState, knowledge);
+        const { thoughtProcess, responseText, emotionalShifts, updatedUserMindState, agentStateChanges } = await getFullAiResponse(currentMessages, emotionalState, customInstruction, aiIdentity, userMindState, agentState, knowledge);
         if (logThinking && thoughtProcess) addLog(`THOUGHT:\n${thoughtProcess}`, 'thought');
         if (updatedUserMindState) setUserMindStateForActiveChat(() => updatedUserMindState);
         handleEmotionalShifts(emotionalShifts);
@@ -345,6 +344,7 @@ export default function App() {
       return null;
     } finally {
       if (!interactiveThought) setIsLoading(false);
+      setAiIdentity(prev => ({...prev, totalInteractions: prev.totalInteractions + 1}));
       const newCount = consolidationCounter + 1;
       setConsolidationCounter(newCount);
       if (newCount % 5 === 0) {
@@ -354,7 +354,7 @@ export default function App() {
         handleValueCoherenceCheck();
       }
     }
-  }, [messages, activeChat, activeChatId, emotionalState, userMindState, agentState, knowledge, customInstruction, coreMemory, addLog, logThinking, interactiveThought, handleEmotionalShifts, handleFinalResponse, consolidationCounter, handleMemoryConsolidation, setUserMindStateForActiveChat, setAgentStateForActiveChat, handleValueCoherenceCheck]);
+  }, [messages, activeChat, activeChatId, emotionalState, userMindState, agentState, knowledge, customInstruction, aiIdentity, addLog, logThinking, interactiveThought, handleEmotionalShifts, handleFinalResponse, consolidationCounter, handleMemoryConsolidation, setUserMindStateForActiveChat, setAgentStateForActiveChat, handleValueCoherenceCheck]);
   
   const handleApproveThought = useCallback(async (approvedThought: string) => {
     if (!pendingThought || !activeChat) return;
@@ -370,7 +370,7 @@ export default function App() {
         const newAgentState = { ...agentState, ...pendingThought.agentStateChanges };
 
         
-        const { responseText } = await generateResponseFromThought(activeChat.messages, newState, approvedThought, customInstruction, forceFidelity, coreMemory, newMindState, newAgentState, knowledge);
+        const { responseText } = await generateResponseFromThought(activeChat.messages, newState, approvedThought, customInstruction, forceFidelity, aiIdentity, newMindState, newAgentState, knowledge);
         await handleFinalResponse(responseText, activeChat.id);
     } catch (error) {
         console.error("Error after approving thought:", error);
@@ -379,7 +379,7 @@ export default function App() {
         setIsLoading(false);
         setPendingThought(null);
     }
-  }, [pendingThought, activeChat, emotionalState, userMindState, agentState, knowledge, customInstruction, coreMemory, logThinking, addLog, handleEmotionalShifts, handleFinalResponse, forceFidelity, setAgentStateForActiveChat]);
+  }, [pendingThought, activeChat, emotionalState, userMindState, agentState, knowledge, customInstruction, aiIdentity, logThinking, addLog, handleEmotionalShifts, handleFinalResponse, forceFidelity, setAgentStateForActiveChat]);
 
   const handlePlayAudio = useCallback(async (text: string) => {
      if (outputAudioContextRef.current) {
@@ -878,7 +878,7 @@ export default function App() {
                 onResetApp={handleResetApp}
                 onExportData={handleExportData}
                 onImportData={handleImportData}
-                coreMemory={coreMemory}
+                aiIdentity={aiIdentity}
                 onConsolidateMemories={handleMemoryConsolidation}
                 isConsolidating={isConsolidating}
                 emotionalState={emotionalState}

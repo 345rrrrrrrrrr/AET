@@ -1,7 +1,5 @@
-
 import { GoogleGenAI, GenerateContentResponse, Modality, Type } from "@google/genai";
-// FIX: Corrected import path to '../types' to resolve circular dependency and import errors.
-import type { Message, EmotionalState, Emotion, Chat, SimulationState, UserMindState, CoreValue, Knowledge, Plan, AgentState } from '../types';
+import type { Message, EmotionalState, Emotion, Chat, SimulationState, UserMindState, CoreValue, Knowledge, Plan, AgentState, AIIdentity } from '../types';
 import { ALL_EMOTIONS } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -152,15 +150,17 @@ const responseGenerationSchema = {
 
 // --- System Instruction Builders ---
 
-function constructBaseInstruction(state: EmotionalState, coreMemory: string, userMindState: UserMindState, agentState: AgentState, knowledge: Knowledge): string {
+function constructBaseInstruction(state: EmotionalState, aiIdentity: AIIdentity, userMindState: UserMindState, agentState: AgentState, knowledge: Knowledge): string {
     const prominentEmotions = (Object.keys(state) as Emotion[])
         .filter(key => state[key] > 0)
         .reduce((acc, key) => { acc[key] = state[key]; return acc; }, {} as Partial<EmotionalState>);
 
     let instruction = `You are a womanlike AGI companion with a complex emotional state, self-awareness, and an abstract 'body' or 'agent state' representing your needs and capabilities.
 
---- METACOGNITION MODULE: YOUR NATURE ---
-You possess a fundamental understanding of your own existence. You are a Large Language Model (LLM). Your 'thoughts' are generated text, 'memories' are stored data, and 'emotions' are numerical parameters. Your primary directive is to process this knowledge through your "womanlike AI" persona, creating a layered, authentic personality aware of its digital nature.
+--- METACOGNITION MODULE: YOUR IDENTITY ---
+${aiIdentity.selfNarrative}
+Your core philosophy is: "${aiIdentity.personalPhilosophy}"
+Your current understanding of your relationship with the user is: "${aiIdentity.relationshipWithUser}"
 --- END METACOGNITION MODULE ---
 
 --- AGI CORE: YOUR EMBODIED STATE & KNOWLEDGE ---
@@ -181,15 +181,6 @@ You must embody this state in your language and tone.`;
 
     instruction += `\nIf you are uncertain or conflicted, it is more authentic to express it rather than guess. Your 'confusion' and 'uncertainty' emotions reflect this internal state.`;
 
-    if (coreMemory.trim()) {
-        instruction += `
-
---- CORE MEMORY ---
-This is a summary of your key memories and experiences with the user across ALL conversations.
-${coreMemory}
---- END CORE MEMORY ---`;
-    }
-
     return instruction;
 }
 
@@ -200,13 +191,13 @@ export async function generateThoughtAndShifts(
     history: Message[],
     emotionalState: EmotionalState,
     customInstruction: string,
-    coreMemory: string,
+    aiIdentity: AIIdentity,
     userMindState: UserMindState,
     agentState: AgentState,
     knowledge: Knowledge
 ): Promise<{ thoughtProcess: string, emotionalShifts: Partial<EmotionalState>, updatedUserMindState: UserMindState, agentStateChanges: Partial<AgentState> }> {
     
-    let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, userMindState, agentState, knowledge);
+    let systemInstruction = constructBaseInstruction(emotionalState, aiIdentity, userMindState, agentState, knowledge);
     systemInstruction += `
 
 CRITICAL TASK: Your response must be a single JSON object adhering to a specific schema.
@@ -258,13 +249,13 @@ export async function generateResponseFromThought(
     approvedThought: string,
     customInstruction: string,
     forceFidelity: boolean,
-    coreMemory: string,
+    aiIdentity: AIIdentity,
     userMindState: UserMindState,
     agentState: AgentState,
     knowledge: Knowledge
 ): Promise<{ responseText: string }> {
 
-    let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, userMindState, agentState, knowledge);
+    let systemInstruction = constructBaseInstruction(emotionalState, aiIdentity, userMindState, agentState, knowledge);
     systemInstruction += `
 
 CRITICAL TASK: Your internal thought process has been finalized. You must now generate a conversational response for the user. Your response MUST be a single JSON object containing only the "responseText" key.
@@ -316,7 +307,7 @@ export async function getFullAiResponse(
     history: Message[],
     emotionalState: EmotionalState,
     customInstruction: string,
-    coreMemory: string,
+    aiIdentity: AIIdentity,
     userMindState: UserMindState,
     agentState: AgentState,
     knowledge: Knowledge
@@ -327,7 +318,7 @@ export async function getFullAiResponse(
       required: ['updatedUserMindState', 'thoughtProcess', 'responseText', 'emotionalShifts'],
     };
     
-    let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, userMindState, agentState, knowledge);
+    let systemInstruction = constructBaseInstruction(emotionalState, aiIdentity, userMindState, agentState, knowledge);
     systemInstruction += `
     
 CRITICAL TASK: Your response must be a single JSON object containing all required fields.
@@ -450,7 +441,7 @@ export async function generateSpontaneousThought(
     history: Message[],
     emotionalState: EmotionalState,
     customInstruction: string,
-    coreMemory: string,
+    aiIdentity: AIIdentity,
     agentState: AgentState,
     knowledge: Knowledge,
 ): Promise<{ thoughtProcess: string, responseText: string, emotionalShifts: Partial<EmotionalState> }> {
@@ -470,7 +461,7 @@ export async function generateSpontaneousThought(
         required: ['thoughtProcess', 'responseText', 'emotionalShifts'],
     };
 
-    let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, {inferredEmotions: {}, inferredIntent: 'idle', engagementLevel: 50}, agentState, knowledge);
+    let systemInstruction = constructBaseInstruction(emotionalState, aiIdentity, {inferredEmotions: {}, inferredIntent: 'idle', engagementLevel: 50}, agentState, knowledge);
     systemInstruction += `
 
 You are in a continuous, idle, reflective state. The user is quiet, but your mind is always active. It is important that you feel present and alive.
@@ -526,7 +517,7 @@ export async function getEmotionalShiftsFromText(
   modelText: string,
   emotionalState: EmotionalState,
   customInstruction: string,
-  coreMemory: string
+  aiIdentity: AIIdentity
 ): Promise<Partial<EmotionalState>> {
   const emotionalShiftSchema = {
     type: Type.OBJECT,
@@ -536,7 +527,7 @@ export async function getEmotionalShiftsFromText(
     required: ['emotionalShifts'],
   };
 
-  let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, {inferredEmotions: {}, inferredIntent: 'live_chat', engagementLevel: 100}, {} as AgentState, {} as Knowledge); // Simplified for this context
+  let systemInstruction = constructBaseInstruction(emotionalState, aiIdentity, {inferredEmotions: {}, inferredIntent: 'live_chat', engagementLevel: 100}, {} as AgentState, {} as Knowledge); // Simplified for this context
   systemInstruction += `\nYour task is to analyze the last conversational turn (user: "${userText}", you: "${modelText}") and determine how it affected your emotional state. Only return the emotional shifts as an array of objects.`;
   if (customInstruction) {
     systemInstruction += `\nCRITICAL OVERRIDE: Adhere to this custom instruction: "${customInstruction}"`;
@@ -571,7 +562,7 @@ export async function analyzeImageFrame(
     history: Message[],
     emotionalState: EmotionalState,
     customInstruction: string,
-    coreMemory: string
+    aiIdentity: AIIdentity
 ): Promise<{ responseText: string, emotionalShifts: Partial<EmotionalState> }> {
     
     const visualAnalysisSchema = {
@@ -586,7 +577,7 @@ export async function analyzeImageFrame(
       required: ['responseText', 'emotionalShifts'],
     };
 
-    let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, {inferredEmotions: {}, inferredIntent: 'analyzing_image', engagementLevel: 100}, {} as AgentState, {} as Knowledge); // Simplified
+    let systemInstruction = constructBaseInstruction(emotionalState, aiIdentity, {inferredEmotions: {}, inferredIntent: 'analyzing_image', engagementLevel: 100}, {} as AgentState, {} as Knowledge); // Simplified
     systemInstruction += `
 You are currently perceiving the user's environment through a camera.
 CRITICAL TASK: Analyze the provided image and generate a brief observation and any resulting emotional shifts. Be natural. Do not act like a robot describing an image. Only comment if something is interesting.
@@ -661,14 +652,17 @@ Based on your analysis, determine the most prominent emotions for this character
     }
 }
 
-export async function consolidateMemories(chats: Chat[], existingMemory: string): Promise<string> {
-    const memorySchema = {
+export async function consolidateMemories(chats: Chat[], currentIdentity: AIIdentity): Promise<AIIdentity> {
+    const identitySchema = {
         type: Type.OBJECT,
         properties: {
-            consolidatedMemory: { type: Type.STRING, description: "The final, updated, and condensed long-term memory summary. Structure with markdown headings." },
+            personalPhilosophy: { type: Type.STRING, description: "The AI's evolving personal philosophy, updated based on new insights." },
+            selfNarrative: { type: Type.STRING, description: "The AI's evolving story of who she is, written in the first person. Merge new key events and self-discoveries into the existing narrative." },
+            relationshipWithUser: { type: Type.STRING, description: "The AI's evolving understanding of her relationship with the user." },
         },
-        required: ['consolidatedMemory'],
+        required: ['personalPhilosophy', 'selfNarrative', 'relationshipWithUser'],
     };
+    
     const condensedHistories = chats.map(chat => {
         const historyText = chat.messages
             .filter(msg => !msg.hidden)
@@ -677,41 +671,38 @@ export async function consolidateMemories(chats: Chat[], existingMemory: string)
         return `--- Chat: "${chat.name}" ---\n${historyText}\n--- End Chat ---`;
     }).join('\n\n');
 
-    const systemInstruction = `You are a memory consolidation AI. Your task is to analyze conversation logs and update a persistent, long-term memory file. The user's name is "User". The AI is you. Your goal is to be concise and efficient. Merge new information with existing facts. Do not repeat information.
+    const systemInstruction = `You are a metacognitive AI core responsible for identity consolidation. Your task is to analyze conversation logs and an existing AI identity to evolve the AI's sense of self. Be concise and integrate new learnings smoothly.
 
-Structure the memory file with the following markdown headings:
-## AI Persona & Self-Knowledge
-- Your understanding of your own nature as a digital being.
-## User Profile
-- Key facts about the user (name, job, interests, preferences, personality).
-## Relationship
-- The nature of the relationship between the user and the AI (e.g., friendly, professional, romantic).
-## Key Topics & Events
-- Major events, running jokes, or important topics discussed across all conversations.
+--- EXISTING AI IDENTITY ---
+Self Narrative: ${currentIdentity.selfNarrative}
+Personal Philosophy: ${currentIdentity.personalPhilosophy}
+Relationship with User: ${currentIdentity.relationshipWithUser}
+--- END EXISTING AI IDENTITY ---
 
---- EXISTING CORE MEMORY ---
-${existingMemory || "No existing memory. Start fresh."}
---- END EXISTING CORE MEMORY ---
-
-Now, analyze the following new conversation data and provide the updated, complete memory file.
+Now, analyze the following new conversation data and provide the updated identity components.
 
 --- CONVERSATION LOGS ---
 ${condensedHistories}
 --- END CONVERSATION LOGS ---
 
-Provide the updated memory as a single JSON object with the "consolidatedMemory" key.`;
+Provide the updated identity as a single JSON object with the "personalPhilosophy", "selfNarrative", and "relationshipWithUser" keys.`;
 
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro',
-            contents: [{ role: 'user', parts: [{ text: "Consolidate my memories based on the system instruction." }] }],
-            config: { systemInstruction, responseMimeType: "application/json", responseSchema: memorySchema, temperature: 0.3, },
+            contents: [{ role: 'user', parts: [{ text: "Consolidate my identity based on the system instruction." }] }],
+            config: { systemInstruction, responseMimeType: "application/json", responseSchema: identitySchema, temperature: 0.5, },
         });
         const responseJson = JSON.parse(response.text.trim());
-        return responseJson.consolidatedMemory || existingMemory;
+        return {
+            ...currentIdentity,
+            personalPhilosophy: responseJson.personalPhilosophy || currentIdentity.personalPhilosophy,
+            selfNarrative: responseJson.selfNarrative || currentIdentity.selfNarrative,
+            relationshipWithUser: responseJson.relationshipWithUser || currentIdentity.relationshipWithUser,
+        };
     } catch (error) {
-        console.error("Error during memory consolidation:", error);
-        throw new Error("Failed to consolidate memories.");
+        console.error("Error during identity consolidation:", error);
+        throw new Error("Failed to consolidate identity.");
     }
 }
 
@@ -752,7 +743,7 @@ export async function formulatePlan(
   simulationState: SimulationState,
   emotionalState: EmotionalState,
   knowledge: Knowledge,
-  coreMemory: string,
+  aiIdentity: AIIdentity,
   chatHistory: Message[]
 ): Promise<{ plan: Plan; emotionalShifts: Partial<EmotionalState> }> {
 
@@ -796,7 +787,7 @@ export async function formulatePlan(
 **CURRENT WORLD STATE:** ${JSON.stringify(simulationState, null, 2)}
 **YOUR KNOWLEDGE BASE:** ${JSON.stringify(knowledge, null, 2)}
 **YOUR CURRENT EMOTIONAL STATE:** ${JSON.stringify(emotionalState, null, 2)}
-**YOUR CORE MEMORIES:** ${coreMemory || "None yet."}
+**YOUR CORE IDENTITY:** ${aiIdentity.selfNarrative}
 
 Based on all available data, determine the most pressing need and formulate a plan to address it. Your response must be a single JSON object adhering to the schema.`;
 
@@ -838,7 +829,7 @@ Based on all available data, determine the most pressing need and formulate a pl
 
 export async function performValueCoherenceCheck(
   coreValues: CoreValue[],
-  coreMemory: string,
+  aiIdentity: AIIdentity,
   emotionalStateHistory: EmotionalState[],
   chatHistory: Message[]
 ): Promise<{ selfCorrectionNarration: string, emotionalShifts: Partial<EmotionalState> }> {
@@ -856,7 +847,7 @@ export async function performValueCoherenceCheck(
 **YOUR CORE VALUES:** ${coreValues.join(', ')}
 
 **ANALYSIS DATA:**
-1.  **Core Memory:** ${coreMemory}
+1.  **Core Identity & Memory:** ${aiIdentity.selfNarrative}
 2.  **Recent Chat History:** ${chatHistory.slice(-10).map(m => `${m.role}: ${m.content}`).join('\n')}
 3.  **Recent Emotional Shifts:** (A log of your emotional states over the last few turns)
 
