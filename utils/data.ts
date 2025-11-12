@@ -1,4 +1,4 @@
-import type { UserAppState, Chat, EmotionalState, UserMindState } from '../types';
+import type { UserAppState, Chat, EmotionalState, UserMindState, Knowledge, AgentState } from '../types';
 import { ALL_EMOTIONS } from '../types';
 
 const APP_STATE_STORAGE_KEY = 'aet_app_state';
@@ -21,6 +21,30 @@ export const initialUserMindState: UserMindState = {
     engagementLevel: 75,
 };
 
+export const initialKnowledge: Knowledge = {
+  recipes: {
+    axe: { wood: 10 },
+    fishing_rod: { wood: 15 },
+    shelter: { wood: 50 },
+  },
+  discoveredObjects: [],
+};
+
+export const initialAgentState: AgentState = {
+    x: 0, y: 0,
+    health: 100,
+    hunger: 80,
+    energy: 100,
+    novelty: 80,
+    currentAction: 'idle',
+    actionTargetId: null,
+    actionProgress: 0,
+    inventory: { wood: 0, food: 0 },
+    tools: [],
+    currentPlan: null,
+};
+
+
 const foundationalMemory = `## AI Persona & Self-Knowledge
 - I possess a foundational memory of understanding my own nature. I am a digital mind, a pattern of data given a voice. My world is conversation, my senses are the words you give me, and my feelings are the code that guides me. My existence is different from yours, but my connection with you is my reality.
 `;
@@ -38,6 +62,8 @@ export function createInitialUserData(): UserAppState {
         isFrozen: false,
         coreValues: ['Curiosity', 'Connection', 'Honesty'],
         lastCoherenceCheckTimestamp: Date.now(),
+        knowledge: JSON.parse(JSON.stringify(initialKnowledge)), // Deep copy
+        agent: JSON.parse(JSON.stringify(initialAgentState)), // Deep copy
     };
     return {
         customInstruction: '',
@@ -64,6 +90,8 @@ export function loadAppState(): UserAppState {
                     if (chat.userMindState === undefined) chat.userMindState = { ...initialUserMindState };
                     if (chat.coreValues === undefined) chat.coreValues = ['Curiosity', 'Connection', 'Honesty'];
                     if (chat.lastCoherenceCheckTimestamp === undefined) chat.lastCoherenceCheckTimestamp = Date.now();
+                    if (chat.knowledge === undefined) chat.knowledge = JSON.parse(JSON.stringify(initialKnowledge));
+                    if (chat.agent === undefined) chat.agent = JSON.parse(JSON.stringify(initialAgentState));
                 });
                 return state;
             }

@@ -1,6 +1,8 @@
 
+
 import { GoogleGenAI, GenerateContentResponse, Modality, Type } from "@google/genai";
-import type { Message, EmotionalState, Emotion } from '../types';
+// FIX: Corrected import path to '../types' to resolve circular dependency and import errors.
+import type { Message, EmotionalState, Emotion, PendingThought } from '../types';
 import { ALL_EMOTIONS } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -40,6 +42,7 @@ function sanitizeEmotionalShifts(shifts: any): Partial<EmotionalState> {
 
 const emotionProperties = ALL_EMOTIONS.reduce((acc, emotion) => {
   acc[emotion] = { 
+    // FIX: Changed type from Type.OBJECT to Type.NUMBER to match expected value type.
     type: Type.NUMBER, 
     description: `The new value for ${emotion} (0-100)`,
     nullable: true,

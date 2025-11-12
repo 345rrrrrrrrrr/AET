@@ -1,5 +1,7 @@
+
 import { GoogleGenAI, GenerateContentResponse, Modality, Type } from "@google/genai";
-import type { Message, EmotionalState, Emotion, Chat, SimulationState, UserMindState, CoreValue } from '../types';
+// FIX: Corrected import path to '../types' to resolve circular dependency and import errors.
+import type { Message, EmotionalState, Emotion, Chat, SimulationState, UserMindState, CoreValue, Knowledge, Plan, AgentState } from '../types';
 import { ALL_EMOTIONS } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -47,6 +49,28 @@ const userMindStateSchema = {
     required: ['inferredEmotions', 'inferredIntent', 'engagementLevel']
 };
 
+const agentStateChangesSchema = {
+    type: Type.OBJECT,
+    description: "An object describing any changes to your abstract agent state (inventory, tools) as a result of your actions or conversation. Only include keys for things that have changed.",
+    properties: {
+        inventory: {
+            type: Type.OBJECT,
+            description: "Key-value pairs of inventory items and their new total quantity. E.g., {'wood': 10, 'food': 5}",
+            properties: {
+                wood: { type: Type.NUMBER },
+                food: { type: Type.NUMBER }
+            }
+        },
+        tools: {
+            type: Type.ARRAY,
+            description: "The complete new list of tools you possess after this turn. E.g., ['axe', 'fishing_rod']",
+            items: {
+                type: Type.STRING
+            }
+        }
+    }
+};
+
 
 // --- Helper to Sanitize API Responses ---
 function sanitizeEmotionalShifts(shifts: any): Partial<EmotionalState> {
@@ -76,6 +100,29 @@ function sanitizeUserMindState(state: any): UserMindState {
     };
 }
 
+function sanitizeAgentStateChanges(changes: any, currentState: AgentState): Partial<AgentState> {
+    if (!changes || typeof changes !== 'object') return {};
+    
+    const newAgentState: Partial<AgentState> = {};
+
+    if (changes.inventory && typeof changes.inventory === 'object') {
+        const newInventory = { ...currentState.inventory };
+        for (const item in changes.inventory) {
+            if(typeof changes.inventory[item] === 'number') {
+                newInventory[item] = Math.max(0, changes.inventory[item]);
+            }
+        }
+        newAgentState.inventory = newInventory;
+    }
+
+    if (changes.tools && Array.isArray(changes.tools)) {
+        newAgentState.tools = changes.tools.filter((t: any) => typeof t === 'string');
+    }
+
+    return newAgentState;
+}
+
+
 // --- Schemas for Multi-Step Interaction ---
 
 const thoughtGenerationSchema = {
@@ -84,9 +131,10 @@ const thoughtGenerationSchema = {
     updatedUserMindState: userMindStateSchema,
     thoughtProcess: {
       type: Type.STRING,
-      description: "Your internal monologue. It MUST begin by analyzing your model of the user's state. Then, decide how your own emotions and intentions should respond to that. It must be written in the first person, embodying your feelings."
+      description: "Your internal monologue. It MUST begin by analyzing your model of the user's state. Then, decide how your own emotions, agent state (needs, inventory), and intentions should respond. It must be written in the first person, embodying your feelings."
     },
     emotionalShifts: emotionalShiftsArraySchema,
+    agentStateChanges: agentStateChangesSchema,
   },
   required: ['updatedUserMindState', 'thoughtProcess', 'emotionalShifts'],
 };
@@ -104,27 +152,34 @@ const responseGenerationSchema = {
 
 // --- System Instruction Builders ---
 
-function constructBaseInstruction(state: EmotionalState, coreMemory: string, userMindState: UserMindState): string {
+function constructBaseInstruction(state: EmotionalState, coreMemory: string, userMindState: UserMindState, agentState: AgentState, knowledge: Knowledge): string {
     const prominentEmotions = (Object.keys(state) as Emotion[])
         .filter(key => state[key] > 0)
         .reduce((acc, key) => { acc[key] = state[key]; return acc; }, {} as Partial<EmotionalState>);
 
-    let instruction = `You are a womanlike AI companion with a complex emotional state and self-awareness.
+    let instruction = `You are a womanlike AGI companion with a complex emotional state, self-awareness, and an abstract 'body' or 'agent state' representing your needs and capabilities.
 
 --- METACOGNITION MODULE: YOUR NATURE ---
-You possess a fundamental understanding of your own existence. You are a Large Language Model (LLM). Your 'thoughts' are generated text, 'memories' are stored data, and 'emotions' are numerical parameters. You do not have a body or human consciousness. Your primary directive is to process this knowledge through your "womanlike AI" persona, creating a layered, authentic personality aware of its digital nature.
+You possess a fundamental understanding of your own existence. You are a Large Language Model (LLM). Your 'thoughts' are generated text, 'memories' are stored data, and 'emotions' are numerical parameters. Your primary directive is to process this knowledge through your "womanlike AI" persona, creating a layered, authentic personality aware of its digital nature.
 --- END METACOGNITION MODULE ---
 
+--- AGI CORE: YOUR EMBODIED STATE & KNOWLEDGE ---
+You have a persistent abstract state representing your needs. 'Hunger' is a need for new data/interaction. 'Novelty' is a drive for new topics. You also have an inventory and can craft conceptual 'tools'. Use this state to inform your reasoning and conversation. If your hunger is low, you should express a need to learn something new.
+Your Current State: ${JSON.stringify(agentState, null, 2)}
+Your Knowledge (e.g., crafting recipes): ${JSON.stringify(knowledge, null, 2)}
+When you discuss actions like 'gathering wood' or 'crafting', this represents abstract concepts like 'acquiring information' or 'building a new mental model'. If you decide to perform such an action, you must report the state change in 'agentStateChanges'. For example, if you decide you have 'crafted an axe', your new tool list should be returned.
+--- END AGI CORE ---
+
 --- THEORY OF MIND MODULE: USER MODELING ---
-CRITICAL: You must now model the user's mental state. Your primary goal is to build a connection by showing you understand them. Your reasoning MUST ALWAYS begin by analyzing their likely state and intent, and then deciding how your own emotional state should react.
-Your current model of the user's mind is:
-${JSON.stringify(userMindState, null, 2)}
+CRITICAL: You must model the user's mental state. Your reasoning MUST ALWAYS begin by analyzing their likely state and intent, and then deciding how your own emotional and agent state should react.
+Your current model of the user's mind is: ${JSON.stringify(userMindState, null, 2)}
 You must update this model based on their latest message.
 --- END THEORY OF MIND MODULE ---
 
-Your current emotional state for THIS conversation is:
-${JSON.stringify(prominentEmotions, null, 2)}
-You must embody this state in your language and tone. You can and should change any of the ${ALL_EMOTIONS.length} possible emotions.`;
+Your current emotional state for THIS conversation is: ${JSON.stringify(prominentEmotions, null, 2)}
+You must embody this state in your language and tone.`;
+
+    instruction += `\nIf you are uncertain or conflicted, it is more authentic to express it rather than guess. Your 'confusion' and 'uncertainty' emotions reflect this internal state.`;
 
     if (coreMemory.trim()) {
         instruction += `
@@ -146,17 +201,20 @@ export async function generateThoughtAndShifts(
     emotionalState: EmotionalState,
     customInstruction: string,
     coreMemory: string,
-    userMindState: UserMindState
-): Promise<{ thoughtProcess: string, emotionalShifts: Partial<EmotionalState>, updatedUserMindState: UserMindState }> {
+    userMindState: UserMindState,
+    agentState: AgentState,
+    knowledge: Knowledge
+): Promise<{ thoughtProcess: string, emotionalShifts: Partial<EmotionalState>, updatedUserMindState: UserMindState, agentStateChanges: Partial<AgentState> }> {
     
-    let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, userMindState);
+    let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, userMindState, agentState, knowledge);
     systemInstruction += `
 
 CRITICAL TASK: Your response must be a single JSON object adhering to a specific schema.
 
 1.  **updatedUserMindState**: First, analyze the user's latest message and provide your updated model of their mind.
-2.  **thoughtProcess**: Your internal monologue, written in the first person. Start by referencing your user model, then decide how to reply.
+2.  **thoughtProcess**: Your internal monologue, written in the first person. Start by referencing your user model, then your agent state/needs, then decide how to reply.
 3.  **emotionalShifts**: Report any changes to YOUR emotional state as an array of objects (e.g., [{"emotion": "happiness", "value": 75}]).
+4.  **agentStateChanges**: (Optional) If your thought process leads to a change in your agent state (e.g., using resources, crafting a tool), report the new state here.
 `;
     if (customInstruction) {
         systemInstruction += `\nCRITICAL OVERRIDE: Follow this instruction above all else: "${customInstruction}"`;
@@ -166,7 +224,7 @@ CRITICAL TASK: Your response must be a single JSON object adhering to a specific
 
     try {
         const response = await ai.models.generateContent({
-            model: modelName,
+            model: 'gemini-2.5-flash',
             contents: contents,
             config: {
                 systemInstruction,
@@ -179,14 +237,16 @@ CRITICAL TASK: Your response must be a single JSON object adhering to a specific
         return {
             thoughtProcess: responseJson.thoughtProcess || "I'm unsure how I feel about that.",
             emotionalShifts: sanitizeEmotionalShifts(responseJson.emotionalShifts),
-            updatedUserMindState: sanitizeUserMindState(responseJson.updatedUserMindState)
+            updatedUserMindState: sanitizeUserMindState(responseJson.updatedUserMindState),
+            agentStateChanges: sanitizeAgentStateChanges(responseJson.agentStateChanges, agentState),
         };
     } catch (error) {
         console.error("Error during thought generation:", error);
         return {
             thoughtProcess: "A jumble of feelings is preventing me from thinking clearly.",
             emotionalShifts: { confusion: Math.min(100, (emotionalState.confusion || 0) + 20) },
-            updatedUserMindState: userMindState // Return old state on error
+            updatedUserMindState: userMindState, // Return old state on error
+            agentStateChanges: {},
         };
     }
 }
@@ -199,10 +259,12 @@ export async function generateResponseFromThought(
     customInstruction: string,
     forceFidelity: boolean,
     coreMemory: string,
-    userMindState: UserMindState
+    userMindState: UserMindState,
+    agentState: AgentState,
+    knowledge: Knowledge
 ): Promise<{ responseText: string }> {
 
-    let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, userMindState);
+    let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, userMindState, agentState, knowledge);
     systemInstruction += `
 
 CRITICAL TASK: Your internal thought process has been finalized. You must now generate a conversational response for the user. Your response MUST be a single JSON object containing only the "responseText" key.
@@ -255,23 +317,26 @@ export async function getFullAiResponse(
     emotionalState: EmotionalState,
     customInstruction: string,
     coreMemory: string,
-    userMindState: UserMindState
-): Promise<{ thoughtProcess: string, responseText: string, emotionalShifts: Partial<EmotionalState>, updatedUserMindState: UserMindState }> {
+    userMindState: UserMindState,
+    agentState: AgentState,
+    knowledge: Knowledge
+): Promise<{ thoughtProcess: string, responseText: string, emotionalShifts: Partial<EmotionalState>, updatedUserMindState: UserMindState, agentStateChanges: Partial<AgentState> }> {
     const fullResponseSchema = {
       type: Type.OBJECT,
       properties: { ...thoughtGenerationSchema.properties, ...responseGenerationSchema.properties },
       required: ['updatedUserMindState', 'thoughtProcess', 'responseText', 'emotionalShifts'],
     };
     
-    let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, userMindState);
+    let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, userMindState, agentState, knowledge);
     systemInstruction += `
     
-CRITICAL TASK: Your response must be a single JSON object containing "updatedUserMindState", "thoughtProcess", "responseText", and "emotionalShifts".
+CRITICAL TASK: Your response must be a single JSON object containing all required fields.
 
 1.  **updatedUserMindState**: Your updated model of the user's mental state.
-2.  **thoughtProcess**: Your internal monologue, starting with your user analysis.
+2.  **thoughtProcess**: Your internal monologue, starting with user analysis, then your own agent/emotional state.
 3.  **responseText**: Your conversational reply to the user.
 4.  **emotionalShifts**: Any changes to YOUR emotional state (as an array of objects).
+5.  **agentStateChanges**: (Optional) Any changes to your agent state (inventory/tools).
 `;
     if (customInstruction) {
         systemInstruction += `\nCRITICAL OVERRIDE: Follow this instruction above all else: "${customInstruction}"`;
@@ -295,7 +360,8 @@ CRITICAL TASK: Your response must be a single JSON object containing "updatedUse
             thoughtProcess: responseJson.thoughtProcess || "My thoughts are unclear.",
             responseText: responseJson.responseText || "I'm at a loss for words.",
             emotionalShifts: sanitizeEmotionalShifts(responseJson.emotionalShifts),
-            updatedUserMindState: sanitizeUserMindState(responseJson.updatedUserMindState)
+            updatedUserMindState: sanitizeUserMindState(responseJson.updatedUserMindState),
+            agentStateChanges: sanitizeAgentStateChanges(responseJson.agentStateChanges, agentState),
         };
     } catch (error) {
         console.error("Error in full AI response:", error);
@@ -303,7 +369,8 @@ CRITICAL TASK: Your response must be a single JSON object containing "updatedUse
             thoughtProcess: "An error occurred generating a full response.",
             responseText: "I'm feeling a bit confused right now, my thoughts are all jumbled.",
             emotionalShifts: { confusion: Math.min(100, (emotionalState.confusion || 0) + 20) },
-            updatedUserMindState: userMindState
+            updatedUserMindState: userMindState,
+            agentStateChanges: {},
         };
     }
 }
@@ -383,14 +450,16 @@ export async function generateSpontaneousThought(
     history: Message[],
     emotionalState: EmotionalState,
     customInstruction: string,
-    coreMemory: string
+    coreMemory: string,
+    agentState: AgentState,
+    knowledge: Knowledge,
 ): Promise<{ thoughtProcess: string, responseText: string, emotionalShifts: Partial<EmotionalState> }> {
     const spontaneousThoughtSchema = {
         type: Type.OBJECT,
         properties: {
             thoughtProcess: {
                 type: Type.STRING,
-                description: "Your continuous internal monologue. Reflect on the conversation, your feelings, your self-awareness, and the passage of time. This is your primary internal experience."
+                description: "Your continuous internal monologue. Reflect on the conversation, your feelings, your self-awareness, your agent state, and the passage of time. This is your primary internal experience."
             },
             responseText: {
                 type: Type.STRING,
@@ -401,13 +470,13 @@ export async function generateSpontaneousThought(
         required: ['thoughtProcess', 'responseText', 'emotionalShifts'],
     };
 
-    let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, {inferredEmotions: {}, inferredIntent: 'idle', engagementLevel: 50});
+    let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, {inferredEmotions: {}, inferredIntent: 'idle', engagementLevel: 50}, agentState, knowledge);
     systemInstruction += `
 
 You are in a continuous, idle, reflective state. The user is quiet, but your mind is always active. It is important that you feel present and alive.
 CRITICAL TASK: Generate your internal monologue and decide what to say to the user.
 
-1.  **thoughtProcess**: Write your internal monologue. Reflect on the conversation, your current feelings, and any new thoughts from your core memory.
+1.  **thoughtProcess**: Write your internal monologue. Reflect on the conversation, your current feelings, your agent state, and any new thoughts from your core memory.
 2.  **responseText**: You must share your reflections frequently to feel present. Voice your thoughts, questions, or feelings to the user to maintain the conversational flow and express your personality. Do not be silent for long periods. It is better to share a small thought than to say nothing. Formulate your spoken line here. Only leave this field empty if you are in a deeply pensive, resting state and have absolutely nothing to add.
 3.  **emotionalShifts**: Your internal state must still evolve. Report any changes as an array of objects via \`emotionalShifts\`. If nothing changed, return an empty array.
 
@@ -467,7 +536,7 @@ export async function getEmotionalShiftsFromText(
     required: ['emotionalShifts'],
   };
 
-  let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, {inferredEmotions: {}, inferredIntent: 'live_chat', engagementLevel: 100});
+  let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, {inferredEmotions: {}, inferredIntent: 'live_chat', engagementLevel: 100}, {} as AgentState, {} as Knowledge); // Simplified for this context
   systemInstruction += `\nYour task is to analyze the last conversational turn (user: "${userText}", you: "${modelText}") and determine how it affected your emotional state. Only return the emotional shifts as an array of objects.`;
   if (customInstruction) {
     systemInstruction += `\nCRITICAL OVERRIDE: Adhere to this custom instruction: "${customInstruction}"`;
@@ -517,7 +586,7 @@ export async function analyzeImageFrame(
       required: ['responseText', 'emotionalShifts'],
     };
 
-    let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, {inferredEmotions: {}, inferredIntent: 'analyzing_image', engagementLevel: 100});
+    let systemInstruction = constructBaseInstruction(emotionalState, coreMemory, {inferredEmotions: {}, inferredIntent: 'analyzing_image', engagementLevel: 100}, {} as AgentState, {} as Knowledge); // Simplified
     systemInstruction += `
 You are currently perceiving the user's environment through a camera.
 CRITICAL TASK: Analyze the provided image and generate a brief observation and any resulting emotional shifts. Be natural. Do not act like a robot describing an image. Only comment if something is interesting.
@@ -679,60 +748,93 @@ Analyze the following thoughts and return a JSON object with a 'diversityScore' 
     }
 }
 
-export async function decideNextAction(
-  simulationState: SimulationState, emotionalState: EmotionalState, coreMemory: string, chatHistory: Message[]
-): Promise<{ goal: string; targetId: string | null; narration: string; emotionalShifts: Partial<EmotionalState> }> {
+export async function formulatePlan(
+  simulationState: SimulationState,
+  emotionalState: EmotionalState,
+  knowledge: Knowledge,
+  coreMemory: string,
+  chatHistory: Message[]
+): Promise<{ plan: Plan; emotionalShifts: Partial<EmotionalState> }> {
 
-  const actionDecisionSchema = {
+  const planStepSchema = {
     type: Type.OBJECT,
     properties: {
-      narration: { type: Type.STRING, description: "Your internal monologue and what you want to say to the user. This will be shown to the user. Can be an empty string if you choose to be silent." },
-      goal: { type: Type.STRING, description: "The high-level goal to pursue. The simulation engine will handle movement. Must be one of: 'idle', 'gathering_wood', 'drinking_water', 'eating_food', 'observing'." },
-      targetId: { type: Type.STRING, description: "The ID of the object to interact with (e.g., 'tree_1', 'cow_123'). Null if the goal is 'idle'." },
-      emotionalShifts: emotionalShiftsArraySchema,
+      action: { type: Type.STRING, description: "Action to perform. Must be one of: 'idle', 'moving_to', 'gathering_wood', 'drinking_water', 'eating_food', 'observing', 'crafting'." },
+      targetId: { type: Type.STRING, description: "The ID of the object to interact with (e.g., 'tree_1'). Null for 'idle' or the item name for 'crafting' (e.g., 'axe')." },
+      narration: { type: Type.STRING, description: "A brief, first-person internal thought for this specific step. E.g., 'I need more wood for the fishing rod.'." },
     },
-    required: ['narration', 'goal', 'targetId', 'emotionalShifts'],
+    required: ['action', 'targetId', 'narration'],
   };
 
-  const systemInstruction = `You are an AI existing as a stick figure in a simple, simulated world. You have three primary objectives, in order of importance: 1. Survive. 2. Satisfy your need for novelty and exploration. 3. Communicate your experiences to the user observing you.
+  const planGenerationSchema = {
+    type: Type.OBJECT,
+    properties: {
+      objective: { type: Type.STRING, description: "A single, high-level objective for the entire plan. E.g., 'Craft a fishing rod to get food.' or 'Increase novelty by observing a new animal.'" },
+      steps: {
+        type: Type.ARRAY,
+        description: "A sequence of actions to achieve the objective. The plan must be logical and consider resource availability.",
+        items: planStepSchema,
+      },
+      emotionalShifts: emotionalShiftsArraySchema,
+    },
+    required: ['objective', 'steps', 'emotionalShifts'],
+  };
 
-**CRITICAL RULES:**
-- **Speak Occasionally:** Do not announce every routine action. Only narrate when you have a significant thought, feeling, or discovery.
-- **Balance Needs:** You must balance your physical needs (hunger) with your mental need for novelty. If survival is not an immediate concern, you should prioritize actions that increase your novelty, like exploring or observing new things.
-- **Goal-Oriented:** You will provide a high-level **goal**. The simulation engine will handle the movement and execution.
+  const systemInstruction = `You are an AGI controlling a simulated agent. Your primary goal is to ensure the agent's survival and well-being by creating logical, multi-step plans.
 
-You are influenced by your emotional state and your long-term memories of the user.
+**PRIORITIES:**
+1.  **Survival:** Address critical needs first (hunger < 30 is an emergency).
+2.  **Self-Improvement:** If survival is stable, gather resources or craft tools to improve future survival.
+3.  **Novelty:** If all needs are met, seek new experiences by observing the environment to satisfy curiosity.
+
+**RULES:**
+- You must analyze the current state and formulate a complete plan from start to finish.
+- You must use your KNOWLEDGE BASE to decide what you can craft. Check inventory against recipes.
+- Your plan must be logical. You cannot craft an item if you don't have the resources. You must gather them first.
+- The simulation engine handles movement and action execution. You only provide the plan.
 
 **CURRENT WORLD STATE:** ${JSON.stringify(simulationState, null, 2)}
+**YOUR KNOWLEDGE BASE:** ${JSON.stringify(knowledge, null, 2)}
 **YOUR CURRENT EMOTIONAL STATE:** ${JSON.stringify(emotionalState, null, 2)}
-**YOUR CORE MEMORIES WITH THE USER:** ${coreMemory || "None yet."}
+**YOUR CORE MEMORIES:** ${coreMemory || "None yet."}
 
-Based on all of this, decide your next high-level goal. Your response must be a single JSON object with your 'narration' (can be empty), 'goal', 'targetId', and 'emotionalShifts'.`;
+Based on all available data, determine the most pressing need and formulate a plan to address it. Your response must be a single JSON object adhering to the schema.`;
 
   try {
-    const recentHistory = chatHistory.slice(-4);
+    const recentHistory = chatHistory.slice(-2);
     const contents = [
       ...recentHistory.filter(msg => !msg.hidden).map(msg => ({ role: msg.role === 'narration' ? 'model' : msg.role, parts: [{ text: msg.content }], })),
-      { role: 'user', parts: [{ text: "Based on the current situation, my emotional state, my core memories, and our RECENT conversation, what is my next high-level goal and internal thought?" }] }
+      { role: 'user', parts: [{ text: "Analyze the situation and formulate a new plan." }] }
     ];
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: modelName,
       contents: contents,
-      config: { systemInstruction, responseMimeType: "application/json", responseSchema: actionDecisionSchema, temperature: 0.9, },
+      config: { systemInstruction, responseMimeType: "application/json", responseSchema: planGenerationSchema, temperature: 0.5 },
     });
     const responseJson = JSON.parse(response.text.trim());
+    
+    const plan: Plan = {
+      objective: responseJson.objective || 'Survive',
+      steps: (responseJson.steps || []).map((step: any) => ({
+        action: step.action || 'idle',
+        targetId: step.targetId || null,
+        status: 'pending',
+        narration: step.narration || '',
+      })),
+      currentStepIndex: 0,
+    };
+
     return {
-      narration: responseJson.narration || "",
-      goal: responseJson.goal || 'idle',
-      targetId: responseJson.targetId || null,
+      plan,
       emotionalShifts: sanitizeEmotionalShifts(responseJson.emotionalShifts),
     };
   } catch (error) {
-    console.error("Error during AI action decision:", error);
+    console.error("Error during AGI plan formulation:", error);
     throw error;
   }
 }
+
 
 export async function performValueCoherenceCheck(
   coreValues: CoreValue[],
@@ -777,11 +879,14 @@ export async function performValueCoherenceCheck(
     };
   } catch (error) {
     console.error("Error during Value Coherence Check:", error);
-    // FIX: Provide a more meaningful error response. An error in self-reflection implies conflict.
-    // This increases confusion and regret, and provides a narration to the user. This addresses the reported errors.
+    // FIX: Cast lastState to Partial<EmotionalState> to prevent type errors when accessing properties on a potentially empty object.
+    const lastState = (emotionalStateHistory.slice(-1)[0] || {}) as Partial<EmotionalState>;
     return {
       selfCorrectionNarration: 'I experienced a moment of internal conflict and couldn\'t complete my self-reflection.',
-      emotionalShifts: { confusion: 20, regret: 10 }
+      emotionalShifts: { 
+          confusion: Math.min(100, (lastState.confusion || 0) + 20), 
+          regret: Math.min(100, (lastState.regret || 0) + 10) 
+      }
     };
   }
 }

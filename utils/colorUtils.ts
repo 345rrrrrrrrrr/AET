@@ -42,7 +42,6 @@ export const EMOTION_COLORS: Record<Emotion, string> = {
   bitterSweetness: '#D2691E',
   bliss: '#E0FFFF',
   blushing: '#FFE4E1',
-  // FIX: Corrected invalid hex color code 'G' is not a valid hex character.
   bored: '#B0B0B0',
   boredom: '#B0C4DE',
   brazen: '#CD5C5C',
@@ -226,6 +225,7 @@ export const EMOTION_COLORS: Record<Emotion, string> = {
   politeness: '#EEDD82',
   positive: '#00FF00',
   possessive: '#800080',
+  powerless: '#C0C0C0',
   pride: '#800080',
   puzzled: '#FFFF00',
   rage: '#FF0000',

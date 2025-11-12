@@ -198,7 +198,6 @@ export default function App() {
         const shiftLogs = Object.entries(shifts).map(([emotion, newValue]) => {
           const oldValue = emotionalState[emotion as Emotion] ?? 0;
           // FIX: Coalesce `newValue` to 0 to prevent a type error if it's undefined during the subtraction operation.
-          // Fix: Explicitly cast newValue to a number before arithmetic operation to resolve potential type inference issues.
           const diff = Number(newValue ?? 0) - oldValue;
           const sign = diff >= 0 ? '+' : '';
           return `${emotion} ${sign}${diff.toFixed(0)} (${oldValue} -> ${Number(newValue ?? 0)})`;
@@ -241,7 +240,7 @@ export default function App() {
         const thoughtResult = await generateThoughtAndShifts(
           currentMessages, emotionalState, customInstruction
         );
-        setPendingThought(thoughtResult);
+        setPendingThought(thoughtResult as PendingThought);
         setIsThoughtModalOpen(true);
         setIsLoading(false); 
         return null; 

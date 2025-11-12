@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useEffect } from 'react';
 import { SendIcon } from './icons/SendIcon';
 import { MicrophoneIcon } from './icons/MicrophoneIcon';
@@ -78,6 +79,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, isLoa
     if (isListening) {
         recognitionRef.current?.stop();
     }
+    if (!inputValue.trim()) return;
     onSendMessage(inputValue);
     setInputValue('');
   };

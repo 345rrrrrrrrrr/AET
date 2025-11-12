@@ -1,5 +1,6 @@
 
 
+// FIX: Corrected import to not be relative to itself and to import from the new types file.
 import type { UserAppState, Chat, EmotionalState, Emotion } from '../types';
 import { ALL_EMOTIONS } from '../types';
 

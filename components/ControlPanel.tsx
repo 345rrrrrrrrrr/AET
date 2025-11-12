@@ -1,19 +1,14 @@
-import React, { useState, useRef, useMemo } from 'react';
-import type { EmotionalState, Emotion, EmotionGroup, Chat, UserMindState } from '../types';
-import { EMOTION_GROUPS } from '../types';
-import { EMOTION_COLORS, adjustColor } from '../utils/colorUtils';
+
+import React, { useState, useRef } from 'react';
+import type { Chat, UserMindState, AgentState, EmotionalState, EmotionGroup, Emotion } from '../types';
+import { EMOTION_GROUPS, ALL_EMOTIONS } from '../types';
+import { EMOTION_COLORS } from '../utils/colorUtils';
 
 interface ControlPanelProps {
-  emotionalState: EmotionalState;
   userMindState: UserMindState;
-  setEmotionalState: React.Dispatch<React.SetStateAction<EmotionalState>>;
+  agentState: AgentState;
+  setAgentState: React.Dispatch<React.SetStateAction<AgentState>>;
   onCustomInstructionClick: () => void;
-  onSetIConfiguration: () => void;
-  onClearAllEmotions: () => void;
-  isCrazyMode: boolean;
-  onToggleCrazyMode: () => void;
-  isProactiveMode: boolean;
-  onToggleProactiveMode: () => void;
   chats: Chat[];
   activeChatId: string | null;
   onNewChat: () => void;
@@ -21,161 +16,104 @@ interface ControlPanelProps {
   onResetApp: () => void;
   onExportData: () => void;
   onImportData: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  isLoading: boolean;
-  onImprintPersona: (personaName: string) => void;
   coreMemory: string;
   onConsolidateMemories: () => void;
   isConsolidating: boolean;
+  emotionalState: EmotionalState;
+  setEmotionalState: (updater: React.SetStateAction<EmotionalState>) => void;
   isFrozen: boolean;
   onToggleFreeze: () => void;
-  onTriggerSelfReflection: () => void;
+  onSetConfigI: () => void;
+  onClearEmotions: () => void;
 }
 
-const Slider: React.FC<{
-  label: Emotion;
-  value: number;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  isCrazyMode: boolean;
-}> = ({ label, value, onChange, isCrazyMode }) => {
-    const activeColor = adjustColor(EMOTION_COLORS[label], value);
-
-    return (
-        <div className={`mb-4 transition-transform duration-100 ${isCrazyMode ? 'crazy-mode-slider' : ''}`}>
-            <label className="block text-sm font-medium text-purple-300 capitalize mb-2">{label} ({value})</label>
-            <input
-                type="range"
-                min="0"
-                max="100"
-                value={value}
-                onChange={onChange}
-                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider-thumb"
-            />
-             <style>{`
-                .slider-thumb::-webkit-slider-thumb {
-                   -webkit-appearance: none;
-                   appearance: none;
-                   width: 16px;
-                   height: 16px;
-                   border-radius: 50%;
-                   background-color: ${activeColor};
-                   box-shadow: 0 0 5px ${activeColor}, 0 0 10px ${activeColor};
-                   cursor: pointer;
-                   margin-top: -5px; /* Adjust for vertical alignment */
-                }
-
-                .slider-thumb::-moz-range-thumb {
-                   width: 16px;
-                   height: 16px;
-                   border-radius: 50%;
-                   background-color: ${activeColor};
-                   box-shadow: 0 0 5px ${activeColor}, 0 0 10px ${activeColor};
-                   cursor: pointer;
-                }
-            `}</style>
-        </div>
-    );
-};
-
-
 export const ControlPanel: React.FC<ControlPanelProps> = ({ 
-    emotionalState, userMindState, setEmotionalState, onCustomInstructionClick, onSetIConfiguration, 
-    onClearAllEmotions, isCrazyMode, onToggleCrazyMode, isProactiveMode, onToggleProactiveMode,
+    userMindState, agentState, setAgentState, onCustomInstructionClick,
     chats, activeChatId, onNewChat, onSelectChat, onResetApp, onExportData, onImportData,
-    isLoading, onImprintPersona, coreMemory, onConsolidateMemories, isConsolidating,
-    isFrozen, onToggleFreeze, onTriggerSelfReflection
+    coreMemory, onConsolidateMemories, isConsolidating,
+    emotionalState, setEmotionalState, isFrozen, onToggleFreeze, onSetConfigI, onClearEmotions
 }) => {
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
-    const initialState: Record<string, boolean> = {};
-    Object.keys(EMOTION_GROUPS).forEach(group => initialState[group] = true); // Default to open
-    return initialState;
-  });
   const importInputRef = useRef<HTMLInputElement>(null);
-  const [personaInput, setPersonaInput] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-
-  const filteredEmotionGroups = useMemo<Record<string, readonly Emotion[]>>(() => {
-    if (!searchTerm.trim()) {
-      return EMOTION_GROUPS;
-    }
-
-    const lowercasedFilter = searchTerm.toLowerCase();
-    const filteredGroups: Record<string, readonly Emotion[]> = {};
-
-    for (const groupName in EMOTION_GROUPS) {
-      if (Object.prototype.hasOwnProperty.call(EMOTION_GROUPS, groupName)) {
-        const groupEmotions = EMOTION_GROUPS[groupName as EmotionGroup];
-        const matchingEmotions = groupEmotions.filter(emotion =>
-          emotion.toLowerCase().includes(lowercasedFilter)
-        );
-
-        if (matchingEmotions.length > 0) {
-          filteredGroups[groupName] = matchingEmotions;
-        }
-      }
-    }
-    return filteredGroups;
-  }, [searchTerm]);
-
-  const toggleGroup = (groupName: string) => {
-    setOpenGroups(prev => ({ ...prev, [groupName]: !prev[groupName] }));
-  };
-
-  const handleSliderChange = (key: keyof EmotionalState) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    setEmotionalState(prev => ({ ...prev, [key]: Number(e.target.value) }));
-  };
-
-  const handleSetGroupMax = (groupName: EmotionGroup) => {
-    const emotionsToUpdate = EMOTION_GROUPS[groupName];
-    const updates = emotionsToUpdate.reduce((acc, emotion) => {
-        acc[emotion] = 100;
-        return acc;
-    }, {} as Partial<EmotionalState>);
-    setEmotionalState(prev => ({ ...prev, ...updates }));
-  };
-
-  const handleAdjustGroup = (groupName: EmotionGroup, amount: number) => {
-      const emotionsToUpdate = EMOTION_GROUPS[groupName];
-      setEmotionalState(prev => {
-          const newState = { ...prev };
-          emotionsToUpdate.forEach(emotion => {
-              const currentValue = newState[emotion as Emotion];
-              const newValue = Math.max(0, Math.min(100, currentValue + amount));
-              newState[emotion as Emotion] = newValue;
-          });
-          return newState;
-      });
-  };
+  const [activeEmotionTab, setActiveEmotionTab] = useState<EmotionGroup | 'All'>('Affective');
 
   const handleImportClick = () => {
     importInputRef.current?.click();
   };
 
-  const handleImprintClick = () => {
-    if (!personaInput.trim()) return;
-    onImprintPersona(personaInput);
-    setPersonaInput('');
+  const handleGiveItem = (item: 'wood' | 'food', amount: number) => {
+    setAgentState(prev => ({
+        ...prev,
+        inventory: {
+            ...prev.inventory,
+            [item]: (prev.inventory[item] || 0) + amount,
+        }
+    }));
   };
 
   const prominentUserEmotions = Object.entries(userMindState.inferredEmotions)
     .sort(([, a], [, b]) => (b as number) - (a as number))
     .slice(0, 3);
+    
+  const emotionTabs: (EmotionGroup | 'All')[] = [...(Object.keys(EMOTION_GROUPS) as EmotionGroup[]), 'All'];
+  const emotionsToList: readonly Emotion[] = activeEmotionTab === 'All'
+    ? ALL_EMOTIONS
+    : EMOTION_GROUPS[activeEmotionTab as EmotionGroup];
 
   return (
     <div className="p-4 bg-gray-800/50 rounded-lg border border-purple-500/20 h-full min-w-[280px]">
       <style>{`
-        @keyframes crazy-shake { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); } 20%, 40%, 60%, 80% { transform: translateX(2px); } }
-        .crazy-mode-slider { animation: crazy-shake 0.1s infinite; }
-        .group-control-button { background-color: rgba(139, 92, 246, 0.2); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.3); display: flex; align-items: center; justify-content: center; transition: all 0.2s ease-in-out; }
-        .group-control-button:hover { background-color: rgba(139, 92, 246, 0.4); color: white; }
-        .chat-list::-webkit-scrollbar { width: 4px; }
-        .chat-list::-webkit-scrollbar-track { background: transparent; }
-        .chat-list::-webkit-scrollbar-thumb { background: #8b5cf6; border-radius: 2px; }
-        .data-button { width: 100%; py: 2; px: 4; font-bold; rounded-md; transition-all; duration-300; shadow-lg; text-sm; }
-        textarea::-webkit-scrollbar { width: 4px; }
-        textarea::-webkit-scrollbar-track { background: transparent; }
-        textarea::-webkit-scrollbar-thumb { background: #8b5cf6; border-radius: 2px; }
+        .chat-list::-webkit-scrollbar, .emotion-sliders::-webkit-scrollbar, textarea::-webkit-scrollbar { width: 4px; }
+        .chat-list::-webkit-scrollbar-track, .emotion-sliders::-webkit-scrollbar-track, textarea::-webkit-scrollbar-track { background: transparent; }
+        .chat-list::-webkit-scrollbar-thumb, .emotion-sliders::-webkit-scrollbar-thumb, textarea::-webkit-scrollbar-thumb { background: #8b5cf6; border-radius: 2px; }
+        .data-button { width: 100%; padding-top: 0.5rem; padding-bottom: 0.5rem; padding-left: 1rem; padding-right: 1rem; font-weight: 700; border-radius: 0.375rem; transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 300ms; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); font-size: 0.875rem; }
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #4a5568; border-radius: 5px; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: currentColor; cursor: pointer; margin-top: -6px; border: 2px solid #2d3748; }
+        input[type=range]:disabled::-webkit-slider-thumb { background: #718096; cursor: not-allowed; }
       `}</style>
       
+      <div className="mb-6 pb-4 border-b border-purple-500/30">
+          <h2 className="text-xl font-bold mb-3 text-purple-400 text-center">Emotional Matrix</h2>
+          <button onClick={onToggleFreeze} className={`w-full py-2 px-4 font-bold rounded-md transition-colors duration-300 shadow-lg text-sm mb-3 text-white ${isFrozen ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20' : 'bg-red-600 hover:bg-red-700 shadow-red-500/20'}`}>
+              {isFrozen ? 'Unfreeze Emotions' : 'Freeze Emotions'}
+          </button>
+          <div className="flex flex-wrap justify-center text-xs border-b border-gray-600 mb-2">
+              {emotionTabs.map(group => (
+                  <button key={group} onClick={() => setActiveEmotionTab(group)} className={`px-2 py-1 transition-colors ${activeEmotionTab === group ? 'border-b-2 border-purple-400 text-white' : 'text-gray-400 hover:text-white'}`}>
+                      {group}
+                  </button>
+              ))}
+          </div>
+          <div className="space-y-1 max-h-64 overflow-y-auto pr-2 emotion-sliders">
+              {activeChatId && emotionsToList.map(emotion => (
+                  <div key={emotion}>
+                      <label className="text-xs text-gray-400 capitalize flex justify-between">
+                          <span>{emotion}</span>
+                          <span>{emotionalState[emotion] || 0}</span>
+                      </label>
+                      <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={emotionalState[emotion] || 0}
+                          onChange={(e) => {
+                              if (!isFrozen) {
+                                  setEmotionalState(prev => ({...prev, [emotion]: parseInt(e.target.value)}))
+                              }
+                          }}
+                          disabled={isFrozen || !activeChatId}
+                          style={{ color: EMOTION_COLORS[emotion] }}
+                      />
+                  </div>
+              ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2 mt-4">
+              <button onClick={onSetConfigI} disabled={!activeChatId} className="py-1 px-2 bg-purple-700/50 text-white font-bold rounded-md hover:bg-purple-600/50 transition-colors duration-300 text-xs disabled:opacity-50 disabled:cursor-not-allowed">Config: Tripod of Self</button>
+              <button onClick={onClearEmotions} disabled={!activeChatId} className="py-1 px-2 bg-purple-700/50 text-white font-bold rounded-md hover:bg-purple-600/50 transition-colors duration-300 text-xs disabled:opacity-50 disabled:cursor-not-allowed">Clear Emotions</button>
+          </div>
+      </div>
+
       <div className="mb-6 pb-4 border-b border-purple-500/30">
           <h2 className="text-xl font-bold mb-3 text-purple-400 text-center">Conversations</h2>
           <button
@@ -239,84 +177,24 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         </div>
       </div>
 
-
-      <h2 className="text-xl font-bold mb-4 text-purple-400 text-center">Emotional Matrix</h2>
-       <div className="mb-4 relative">
-          <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search for an emotion..."
-              className="w-full p-2 pl-8 bg-gray-900/70 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-gray-400 text-sm"
-          />
-          <div className="absolute inset-y-0 left-0 flex items-center pl-2 pointer-events-none">
-              <svg className="w-4 h-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-          </div>
-       </div>
-
-       <div className="space-y-2 mb-6">
-         <button onClick={onSetIConfiguration} className="w-full py-2 px-4 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700 transition-colors duration-300 shadow-lg shadow-blue-500/20 text-sm">Set "I" Configuration</button>
-          <button onClick={onTriggerSelfReflection} className="w-full py-2 px-4 bg-teal-600 text-white font-bold rounded-md hover:bg-teal-700 transition-colors duration-300 shadow-lg shadow-teal-500/20 text-sm">Trigger Self-Reflection</button>
-          <button onClick={onClearAllEmotions} className="w-full py-2 px-4 bg-gray-700 text-white font-bold rounded-md hover:bg-gray-800 transition-colors duration-300 shadow-lg shadow-gray-900/20 text-sm">Clear All Emotions</button>
-          <button onClick={onToggleProactiveMode} className={`w-full py-2 px-4 font-bold rounded-md transition-all duration-300 shadow-lg text-sm ${isProactiveMode ? 'bg-cyan-600 text-white shadow-cyan-500/30 hover:bg-cyan-700' : 'bg-gray-600 text-gray-200 shadow-gray-700/30 hover:bg-gray-700'}`}>
-            {isProactiveMode ? 'Deactivate AI Initiative' : 'Activate AI Initiative'}
-          </button>
-          <button onClick={onToggleCrazyMode} className={`w-full py-2 px-4 font-bold rounded-md transition-all duration-300 shadow-lg text-sm ${isCrazyMode ? 'bg-red-700 text-white shadow-red-500/30 hover:bg-red-800 animate-pulse' : 'bg-gray-600 text-gray-200 shadow-gray-700/30 hover:bg-gray-700'}`}>
-            {isCrazyMode ? 'Deactivate Crazy Mode' : 'Activate Crazy Mode'}
-          </button>
-          <button onClick={onToggleFreeze} disabled={!activeChatId} className={`w-full py-2 px-4 font-bold rounded-md transition-all duration-300 shadow-lg text-sm ${isFrozen ? 'bg-sky-600 text-white shadow-sky-500/30 hover:bg-sky-700' : 'bg-gray-600 text-gray-200 shadow-gray-700/30 hover:bg-gray-700'}`}>
-            {isFrozen ? 'Unfreeze Emotions' : 'Freeze Emotions'}
-          </button>
-       </div>
-      
-      {Object.entries(filteredEmotionGroups).map(([groupName, emotions]) => (
-        <div key={groupName} className="mb-4 border-b border-purple-500/10">
-          <div className="w-full text-left p-2 rounded-md flex justify-between items-center hover:bg-purple-500/10">
-            <button onClick={() => toggleGroup(groupName)} className="flex items-center flex-grow text-purple-300">
-              <span className="font-semibold">{groupName}</span>
-              <span className={`transition-transform duration-200 ml-2 ${openGroups[groupName] ? 'rotate-180' : ''}`}>▼</span>
-            </button>
-            <div className="flex items-center space-x-1 flex-shrink-0">
-                <button onClick={() => handleAdjustGroup(groupName as EmotionGroup, -10)} className="group-control-button w-6 h-6 rounded-full font-bold" aria-label={`Decrease ${groupName} by 10`}>-</button>
-                <button onClick={() => handleAdjustGroup(groupName as EmotionGroup, 10)} className="group-control-button w-6 h-6 rounded-full font-bold" aria-label={`Increase ${groupName} by 10`}>+</button>
-                <button onClick={() => handleSetGroupMax(groupName as EmotionGroup)} className="group-control-button px-2 h-6 rounded-lg font-bold text-xs" aria-label={`Set ${groupName} to max`}>MAX</button>
-            </div>
-          </div>
-
-          <div className={`overflow-hidden transition-all duration-300 ease-in-out ${openGroups[groupName] ? 'max-h-[1000px] py-2' : 'max-h-0'}`}>
-             {(emotions as readonly Emotion[]).map(key => (
-              <Slider
-                key={key}
-                label={key as Emotion}
-                value={emotionalState[key as Emotion] || 0}
-                onChange={handleSliderChange(key as Emotion)}
-                isCrazyMode={isCrazyMode}
-              />
-            ))}
-          </div>
+      <div className="mb-4 pb-4 border-b border-purple-500/30">
+        <h2 className="text-xl font-bold mb-3 text-yellow-400 text-center">AI Agent State</h2>
+        <div className="text-sm space-y-2 text-gray-300 font-mono p-2 bg-gray-900/50 rounded-md">
+            <div className="flex justify-between items-center"><span>Hunger:</span> <span className="text-yellow-300">{agentState.hunger.toFixed(0)}</span></div>
+            <div className="flex justify-between items-center"><span>Novelty:</span> <span className="text-yellow-300">{agentState.novelty.toFixed(0)}</span></div>
+            <div className="flex justify-between items-center"><span>Wood:</span> <span className="text-yellow-300">{agentState.inventory.wood || 0}</span></div>
+            <div className="flex justify-between items-center"><span>Food:</span> <span className="text-yellow-300">{agentState.inventory.food || 0}</span></div>
+            <div className="flex justify-between items-center"><span>Tools:</span> <span className="text-yellow-300">{agentState.tools.join(', ') || 'None'}</span></div>
         </div>
-      ))}
-      
-      {Object.keys(filteredEmotionGroups).length === 0 && (
-          <div className="text-center text-gray-500 py-4">No emotions found matching "{searchTerm}".</div>
-      )}
+        <div className="grid grid-cols-2 gap-2 mt-2">
+            <button onClick={() => handleGiveItem('wood', 10)} className="py-1 px-2 bg-yellow-700/50 text-white font-bold rounded-md hover:bg-yellow-600/50 transition-colors duration-300 text-xs">Give 10 Wood</button>
+            <button onClick={() => handleGiveItem('food', 10)} className="py-1 px-2 bg-yellow-700/50 text-white font-bold rounded-md hover:bg-yellow-600/50 transition-colors duration-300 text-xs">Give 10 Food</button>
+        </div>
+      </div>
 
       <button onClick={onCustomInstructionClick} className="w-full mt-6 py-2 px-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-md hover:from-purple-700 hover:to-pink-700 transition-all duration-300 shadow-lg shadow-purple-500/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-white">
         Custom Instructions
       </button>
-
-      <div className="mt-6 pt-4 border-t border-purple-500/30">
-        <h2 className="text-xl font-bold mb-3 text-purple-400 text-center">Persona Imprinting</h2>
-        <p className="text-xs text-gray-500 text-center mb-4">Enter a character's name to analyze their personality from the web and set the emotional matrix.</p>
-        <div className="flex space-x-2">
-          <input type="text" value={personaInput} onChange={(e) => setPersonaInput(e.target.value)} placeholder="e.g., Walter White, Sherlock Holmes" disabled={isLoading || isConsolidating} className="flex-1 p-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-gray-400 text-sm disabled:opacity-50" />
-          <button onClick={handleImprintClick} disabled={isLoading || isConsolidating || !personaInput.trim()} className="py-2 px-4 bg-indigo-600 text-white font-bold rounded-md hover:bg-indigo-700 transition-colors duration-300 shadow-lg shadow-indigo-500/20 text-sm disabled:opacity-50 disabled:cursor-wait">
-            {isLoading ? 'Analyzing...' : 'Imprint'}
-          </button>
-        </div>
-      </div>
 
       <div className="mt-6 pt-4 border-t border-purple-500/30">
         <h2 className="text-xl font-bold mb-3 text-purple-400 text-center">Data Management</h2>
